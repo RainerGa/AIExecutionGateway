@@ -1,0 +1,81 @@
+# Configuration Template: ENTERPRISE SSO (Microsoft Entra ID / OIDC)
+# =================================================================
+#
+# SCENARIO: Deployment in a corporate environment using Single Sign-On (SSO).
+# This configuration uses OpenID Connect (OIDC) for authentication and 
+# implements Role-Based Access Control (RBAC) via group memberships.
+#
+# Usage: APP_CONFIG_FILE=config/examples/enterprise_oidc.toml ./start_server.sh
+
+# Target the production profile for strict security settings.
+active_profile = "production"
+
+# ------------------------------------------------------------------------------
+# GLOBAL SETTINGS
+# ------------------------------------------------------------------------------
+[defaults]
+app_name = "Enterprise Codex Orchestrator"
+api_prefix = "/api/v1"
+
+# Security: Disable public documentation endpoints in production.
+enable_docs = false
+
+# Professional log level for production.
+log_level = "INFO"
+
+# Restricted CORS to authorized company domains only.
+cors_allowed_origins = ["https://codex.yourcompany.com", "https://app.yourcompany.com"]
+
+# ------------------------------------------------------------------------------
+# AUTHENTICATION (OIDC)
+# ------------------------------------------------------------------------------
+[defaults.auth]
+# Enables Bearer Token validation against an OIDC provider.
+mode = "oidc_jwt"
+
+[defaults.oidc]
+# Configuration for Microsoft Entra ID (formerly Azure AD).
+# Replace <tenant-id> and <client-id> with your actual values.
+issuer = "https://login.microsoftonline.com/<tenant-id>/v2.0"
+audience = "api://<client-id>"
+jwks_url = "https://login.microsoftonline.com/<tenant-id>/discovery/v2.0/keys"
+
+# JWT Claims Mapping
+username_claim = "preferred_username" # Display name in logs
+email_claim = "email"                # User identification
+groups_claim = "groups"              # Claim containing the list of group IDs
+roles_claim = "roles"                # Optional claim for app roles
+
+# Security: Allow 60 seconds of clock drift between the server and the IDP.
+clock_skew_seconds = 60
+
+# ------------------------------------------------------------------------------
+# AUTHORIZATION (RBAC)
+# ------------------------------------------------------------------------------
+[defaults.authorization]
+# Enable strict role checking for every request.
+enabled = true
+
+# Internal roles required to execute tasks.
+execute_task_roles = ["admin", "user"]
+
+# Mapping of external Object IDs (GUIDs) from Entra ID to internal roles.
+# You can find these IDs in the Azure Portal under "Groups".
+admin_groups = ["8583492a-364e-4f7f-8d2a-43849583021"] # Codex-Admins
+user_groups = ["29485731-1f2e-4b3d-9c8a-72615483920"]  # Codex-Users
+readonly_groups = []
+
+# ------------------------------------------------------------------------------
+# GOVERNANCE & AUDIT
+# ------------------------------------------------------------------------------
+[defaults.audit]
+# Enable detailed audit logging (who did what and when).
+# Highly recommended for compliance in enterprise environments.
+enabled = true
+
+# ------------------------------------------------------------------------------
+# PROFILE OVERRIDES
+# ------------------------------------------------------------------------------
+[profiles.production]
+environment = "production"
+# The API is now locked down for production use.

@@ -1,0 +1,58 @@
+# Configuration Template: TRUSTED PROXY AUTH (IIS / Nginx / Apache)
+# ==============================================================
+#
+# SCENARIO: Deployment in an intranet environment where a reverse proxy 
+# (like IIS with Windows Integrated Auth) handles the user identification.
+#
+# The proxy verifies the user and "injects" their identity into HTTP headers.
+#
+# Usage: APP_CONFIG_FILE=config/examples/enterprise_trusted_header.toml ./start_server.sh
+
+active_profile = "intranet"
+
+# ------------------------------------------------------------------------------
+# GLOBAL SETTINGS
+# ------------------------------------------------------------------------------
+[defaults]
+app_name = "Internal Codex Service"
+log_level = "INFO"
+enable_docs = true # Internal docs are usually fine
+
+# ------------------------------------------------------------------------------
+# AUTHENTICATION (TRUSTED HEADERS)
+# ------------------------------------------------------------------------------
+[defaults.auth]
+# Mode "trusted_header" trusts the identity provided in specific HTTP headers.
+mode = "trusted_header"
+
+[defaults.trusted_header]
+# Define which headers the API should look at for user info.
+user_header = "X-Authenticated-User"   # e.g. "DOMAIN\jdoe"
+email_header = "X-Authenticated-Email" # e.g. "j.doe@company.com"
+groups_header = "X-Authenticated-Groups" # e.g. "Codex-Users;Marketing"
+
+# How groups are separated in the groups_header.
+group_separator = ";"
+
+# CRITICAL SECURITY SETTING:
+# Only trust these headers if the request comes from these IP addresses.
+# This prevents users from "spoofing" headers by calling the API directly.
+trusted_proxy_ips = ["10.0.0.10", "10.0.0.11"]
+
+# ------------------------------------------------------------------------------
+# AUTHORIZATION (RBAC)
+# ------------------------------------------------------------------------------
+[defaults.authorization]
+enabled = true
+
+# Mapping of group names (as sent by the proxy) to application roles.
+admin_groups = ["DOMAIN\\Codex-Admins", "IT-Security"]
+user_groups = ["DOMAIN\\Codex-Users", "Department-Sales"]
+
+# ------------------------------------------------------------------------------
+# PROFILE OVERRIDES
+# ------------------------------------------------------------------------------
+[profiles.intranet]
+environment = "production"
+# We can override log levels or other settings specifically for the intranet profile.
+log_level = "WARNING" 

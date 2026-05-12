@@ -1,0 +1,65 @@
+# Configuration Template: LOCAL DEVELOPMENT
+# ========================================
+#
+# SCENARIO: A single developer working on their local machine.
+# This configuration minimizes friction by disabling authentication and 
+# enabling all debugging features.
+#
+# Usage: APP_CONFIG_FILE=config/examples/local_dev.toml ./start_server.sh
+
+# We use a dedicated development profile to clearly separate it from production.
+active_profile = "development"
+
+# ------------------------------------------------------------------------------
+# GLOBAL SETTINGS
+# ------------------------------------------------------------------------------
+[defaults]
+# A friendly name for the local API instance.
+app_name = "Codex API (Local Dev)"
+
+# Base URL prefix for all API endpoints.
+api_prefix = "/api/v1"
+
+# Enable Swagger UI (/docs) and ReDoc (/redoc). 
+# Highly recommended for development.
+enable_docs = true
+
+# Use DEBUG level to see detailed request/response logs and internal state.
+log_level = "DEBUG"
+
+# Relaxed CORS for local frontend development (e.g., React/Vue on port 3000).
+# WARNING: Do not use "*" in production.
+cors_allowed_origins = ["*"]
+
+# ------------------------------------------------------------------------------
+# CODEX WORKSPACE
+# ------------------------------------------------------------------------------
+[defaults.codex]
+# For local dev, we often don't need a template, so we leave it empty.
+project_source = ""
+
+# If left empty, Codex will create a fresh temp directory for every request.
+sessions_base_path = ""
+
+# ------------------------------------------------------------------------------
+# SECURITY (DISABLED)
+# ------------------------------------------------------------------------------
+[defaults.auth]
+# "disabled" means no API keys or tokens are required.
+mode = "disabled"
+
+[defaults.authorization]
+# Role-based access control is turned off.
+enabled = false
+
+[defaults.audit]
+# Audit logging is usually not needed during development.
+enabled = false
+
+# ------------------------------------------------------------------------------
+# PROFILE OVERRIDES
+# ------------------------------------------------------------------------------
+[profiles.development]
+environment = "development"
+# No further overrides needed here as we defined everything in [defaults] 
+# for this standalone template.

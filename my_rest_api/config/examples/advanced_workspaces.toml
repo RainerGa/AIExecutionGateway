@@ -1,0 +1,56 @@
+# Configuration Template: ADVANCED WORKSPACES & TEMPLATES
+# ========================================================
+#
+# SCENARIO: Use this when you want to provide a specific project context
+# (e.g. libraries, documentation, boilerplate) to the Codex AI for every task.
+#
+# Usage: APP_CONFIG_FILE=config/examples/advanced_workspaces.toml ./start_server.sh
+
+active_profile = "production"
+
+# ------------------------------------------------------------------------------
+# CODEX WORKSPACE MANAGEMENT
+# ------------------------------------------------------------------------------
+[defaults.codex]
+# PROJECT SOURCE:
+# Path to a directory that contains a "template" project.
+# Every time a user starts a new session, this entire directory is copied
+# to a fresh, isolated workspace.
+#
+# Use this to pre-load:
+# - .py files with common helper functions
+# - README.md files with instructions for the AI
+# - Specific requirements or config files
+project_source = "/opt/codex/templates/data-science-standard"
+
+# SESSIONS BASE PATH:
+# The root directory where the session workspaces will be created.
+# 
+# Example structure after a few requests:
+# /var/lib/codex/sessions/
+# ├── session-abc-123/  <-- Copy of project_source
+# ├── session-def-456/  <-- Copy of project_source
+# └── ...
+sessions_base_path = "/var/lib/codex/sessions"
+
+# ------------------------------------------------------------------------------
+# GLOBAL SETTINGS (PRODUCTION READY)
+# ------------------------------------------------------------------------------
+[defaults]
+app_name = "Context-Aware Codex Service"
+log_level = "INFO"
+enable_docs = false
+
+[defaults.auth]
+mode = "disabled" # Authentication can still be combined with workspaces!
+
+# ------------------------------------------------------------------------------
+# PROFILE OVERRIDES
+# ------------------------------------------------------------------------------
+[profiles.production]
+environment = "production"
+
+# Example: Overriding the template path for a specific environment.
+# [profiles.staging]
+# environment = "staging"
+# codex.project_source = "/opt/codex/templates/data-science-staging"
