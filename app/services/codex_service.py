@@ -18,6 +18,7 @@ from app.core.exceptions import (
     ConfigurationError,
     InvalidTaskRequestError,
 )
+
 from app.schemas.codex import (
     TaskExecutionMetadata,
     TaskExecutionRequest,
@@ -35,6 +36,7 @@ class CodexExecutionService:
 
     def __init__(self, settings: AppSettings) -> None:
         self.settings = settings
+        self._warn_if_misconfigured()
 
     def execute_task(
         self,
@@ -65,8 +67,23 @@ class CodexExecutionService:
         cwd = None
 
         if self.settings.codex_sessions_base_path:
-            base_path = Path(self.settings.codex_sessions_base_path)
-            session_dir = base_path / session_id
+            base_path = Path(self.settings.codex_sessions_base_path).resolve()
+            session_dir = (base_path / session_id).resolve()
+
+            # Defense-in-depth: verify the resolved path is still inside base_path.
+            # The schema validator on session_id already blocks traversal characters,
+            # but this check ensures correctness even if validation is bypassed.
+            if not str(session_dir).startswith(str(base_path) + "/") and session_dir != base_path:
+                LOGGER.error(
+                    "Path traversal attempt blocked. actor=%s session_id=%r resolved=%s",
+                    principal.display_name,
+                    session_id,
+                    session_dir,
+                )
+                raise InvalidTaskRequestError(
+                    "Invalid session_id: resolved path escapes the allowed workspace area.",
+                )
+
             cwd = str(session_dir)
 
             if not session_dir.exists():
@@ -75,7 +92,7 @@ class CodexExecutionService:
                     if not source_path.exists():
                         raise ConfigurationError(f"Configured project source not found: {source_path}")
                     try:
-                        shutil.copytree(source_path, session_dir)
+                        shutil.copytree(source_path, session_dir, symlinks=True)
                     except Exception as exc:
                         raise CodexExecutionError(f"Failed to provision session workspace: {exc}") from exc
                 else:
@@ -176,3 +193,22 @@ class CodexExecutionService:
         if not self.settings.codex_model:
             return {}
         return {"model": self.settings.codex_model}
+
+    def _warn_if_misconfigured(self) -> None:
+        """Emit a prominent warning for configurations that weaken workspace isolation.
+
+        When authentication is disabled every request resolves to the same
+        ``local-development`` principal.  If session workspaces are active at
+        the same time, all concurrent requests share a *single* workspace
+        directory, which completely undermines the isolation guarantee.
+        This combination is only acceptable for local single-user development.
+        """
+        if (
+            self.settings.auth.mode == "disabled"
+            and self.settings.codex_sessions_base_path
+        ):
+            LOGGER.warning(
+                "SECURITY WARNING: auth_mode=disabled with an active codex_sessions_base_path. "
+                "All requests share the 'local-development' workspace – no user isolation. "
+                "Do NOT use this configuration in multi-user or production environments."
+            )

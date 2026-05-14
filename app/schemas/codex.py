@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
 
 from pydantic import BaseModel, Field, field_validator
+
+# Only alphanumeric characters, hyphens, and underscores are safe as path components.
+# This prevents path traversal attacks (e.g. '../', '/', null bytes).
+_SAFE_SESSION_ID_RE = re.compile(r"^[a-zA-Z0-9_\-]+$")
 
 
 class TaskExecutionRequest(BaseModel):
@@ -18,8 +23,12 @@ class TaskExecutionRequest(BaseModel):
     )
     session_id: str | None = Field(
         default=None,
+        min_length=1,
         max_length=128,
-        description="Optional identifier to isolate this execution within a user session workspace.",
+        description=(
+            "Optional identifier to isolate this execution within a user session workspace. "
+            "Must consist only of letters, digits, hyphens, and underscores."
+        ),
     )
 
     @field_validator("task_description")
@@ -30,6 +39,22 @@ class TaskExecutionRequest(BaseModel):
         if not normalized:
             raise ValueError("task_description must not be blank.")
         return normalized
+
+    @field_validator("session_id")
+    @classmethod
+    def validate_session_id(cls, value: str | None) -> str | None:
+        """Enforce a strict whitelist to prevent path traversal and injection attacks.
+
+        Only alphanumeric characters, hyphens, and underscores are permitted.
+        This blocks sequences such as '../', '/', null bytes, and encoded variants.
+        """
+        if value is None:
+            return None
+        if not _SAFE_SESSION_ID_RE.match(value):
+            raise ValueError(
+                "session_id must contain only letters, digits, hyphens, and underscores."
+            )
+        return value
 
     model_config = {
         "json_schema_extra": {
