@@ -63,7 +63,17 @@ class CodexExecutionService:
                 principal.auth_mode,
             )
 
-        session_id = request.session_id or principal.username
+        raw_session_id = request.session_id or principal.username
+        session_id = Path(raw_session_id).name
+        if (
+            not session_id
+            or session_id in {".", ".."}
+            or session_id != raw_session_id
+        ):
+            raise InvalidTaskRequestError(
+                "Invalid session_id: must be a single safe path segment.",
+            )
+
         cwd = None
 
         if self.settings.codex_sessions_base_path:
