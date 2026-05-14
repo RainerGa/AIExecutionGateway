@@ -66,20 +66,15 @@ class CodexExecutionService:
                 principal.auth_mode,
             )
 
-        raw_session_id = request.session_id or principal.username
+        raw_session_id = str(request.session_id or principal.username)
         
-        # Security: CodeQL-recognized path injection sanitizer (os.path.basename)
-        # We ensure the ID is a single safe path segment.
-        session_id = os.path.basename(str(raw_session_id))
-        if session_id != str(raw_session_id) or not session_id or session_id in {".", ".."}:
+        # Security: Reconstruct the string character-by-character from a strict whitelist.
+        # This definitively breaks the taint flow for static analysis tools like CodeQL.
+        session_id = "".join(c for c in raw_session_id if c.isalnum() or c in "-_")
+        
+        if session_id != raw_session_id or not session_id:
             raise InvalidTaskRequestError(
-                "Invalid session_id: must be a single safe path segment.",
-            )
-
-        # Additional regex validation for safe characters
-        if not SAFE_SESSION_ID_PATTERN.fullmatch(session_id):
-            raise InvalidTaskRequestError(
-                "Invalid session_id: contains unsafe characters.",
+                "Invalid session_id: must be a single safe path segment (alphanumeric, hyphens, underscores).",
             )
 
         cwd = None
