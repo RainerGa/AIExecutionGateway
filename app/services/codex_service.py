@@ -73,7 +73,9 @@ class CodexExecutionService:
             # Defense-in-depth: verify the resolved path is still inside base_path.
             # The schema validator on session_id already blocks traversal characters,
             # but this check ensures correctness even if validation is bypassed.
-            if not str(session_dir).startswith(str(base_path) + "/") and session_dir != base_path:
+            try:
+                session_dir.relative_to(base_path)
+            except ValueError:
                 LOGGER.error(
                     "Path traversal attempt blocked. actor=%s session_id=%r resolved=%s",
                     principal.display_name,
