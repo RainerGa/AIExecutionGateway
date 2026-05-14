@@ -31,6 +31,7 @@ from app.security.models import UserPrincipal
 
 LOGGER = logging.getLogger(__name__)
 INHERITED_MODEL_NAME = "codex-default"
+SAFE_SESSION_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
 class CodexExecutionService:
@@ -66,37 +67,18 @@ class CodexExecutionService:
             )
 
         raw_session_id = request.session_id or principal.username
-        
-        # Security: Stricter validation using a whitelist regex.
-        # This prevents any character that could be interpreted by the OS or shell.
-        if not re.match(r"^[a-zA-Z0-9_\-]+$", raw_session_id):
-            raise InvalidTaskRequestError(
-                "Invalid session_id: must be a single safe path segment (alphanumeric, underscores, or hyphens).",
-            )
-            
-        # CodeQL py/path-injection sanitizer: os.path.basename explicitly untaints the string
-        session_id = os.path.basename(str(raw_session_id))
-        
-        if session_id != raw_session_id or not session_id or session_id in {".", ".."}:
-            # This is a redundant safety check given the regex above, 
-            # but it serves as defense-in-depth and clarifies intent to scanners.
-            raise InvalidTaskRequestError(
-                "Invalid session_id: path traversal or special segments are not allowed.",
-            )
+        session_id = self._sanitize_session_id(raw_session_id)
 
         cwd = None
 
         if self.settings.codex_sessions_base_path:
-            base_dir = os.path.abspath(self.settings.codex_sessions_base_path)
-            target_dir = os.path.abspath(os.path.join(base_dir, session_id))
+            base_path = Path(self.settings.codex_sessions_base_path).resolve()
+            session_dir = base_path.joinpath(session_id).resolve(strict=False)
 
             # Defense-in-depth: verify the resolved path is still inside base_path.
-            # CodeQL explicitly recognizes os.path.commonpath as a path traversal sanitizer.
-            try:
-                common = os.path.commonpath([base_dir, target_dir])
-                if common != base_dir:
-                    raise ValueError("Path escapes base directory")
-            except ValueError:
+            # The schema validator on session_id already blocks traversal characters,
+            # but this check ensures correctness even if validation is bypassed.
+            if not session_dir.is_relative_to(base_path):
                 LOGGER.error(
                     "Path traversal attempt blocked. actor=%s",
                     principal.display_name,
@@ -173,6 +155,20 @@ class CodexExecutionService:
                 duration_ms=duration_ms,
             ),
         )
+
+    def _sanitize_session_id(self, raw_session_id: str) -> str:
+        """Validate and normalize user-provided session id to one safe path segment."""
+        session_id = Path(raw_session_id).name
+        if (
+            not session_id
+            or session_id in {".", ".."}
+            or session_id != raw_session_id
+            or not SAFE_SESSION_ID_PATTERN.fullmatch(session_id)
+        ):
+            raise InvalidTaskRequestError(
+                "Invalid session_id: must be a single safe path segment (alphanumeric, underscores, or hyphens).",
+            )
+        return session_id
 
     def readiness_components(self) -> list[HealthComponent]:
         """Return a lightweight readiness report for infrastructure probing."""
