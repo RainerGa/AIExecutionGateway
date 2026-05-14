@@ -127,3 +127,153 @@ def test_workspace_creation_fails_gracefully_on_missing_template(tmp_path: Path)
             principal=TEST_PRINCIPAL
         )
     assert "project source not found" in str(exc_info.value)
+
+
+# ---------------------------------------------------------------------------
+# ADVERSARIAL TESTS – Path Traversal & Injection
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("malicious_session_id", [
+    # These resolve OUTSIDE sessions_base_path and must be blocked:
+    "../../../etc",
+    "alice/../../etc",
+    "..",
+    "/absolute/path",
+    "../../root",
+    # NOTE: "alice/../bob" resolves to <base>/bob (still inside base_path),
+    # so it is NOT a traversal at service level. It IS blocked by the schema
+    # validator (Layer 1) because it contains a '/'. See test_schema_rejects_dangerous_session_ids.
+])
+def test_path_traversal_blocked_by_service_containment(tmp_path: Path, malicious_session_id: str):
+    """
+    ADVERSARIAL TEST: Verifies that the service-level containment check
+    blocks any session_id that would resolve outside sessions_base_path,
+    even if schema validation were somehow bypassed (Defense-in-Depth).
+    """
+    from app.core.exceptions import InvalidTaskRequestError
+
+    sessions_dir = tmp_path / "sessions"
+    sessions_dir.mkdir()
+
+    settings = build_test_settings()
+    settings = replace(settings, codex_sessions_base_path=str(sessions_dir))
+
+    service = CodexExecutionService(settings=settings)
+
+    # Inject the malicious value via principal.username (the session_id fallback path).
+    malicious_principal = build_test_principal(username=malicious_session_id)
+
+    with pytest.raises(InvalidTaskRequestError) as exc_info:
+        service.execute_task(
+            TaskExecutionRequest(task_description="test"),
+            request_id="req-traversal",
+            principal=malicious_principal,
+        )
+    assert "escapes the allowed workspace area" in str(exc_info.value)
+
+
+@pytest.mark.parametrize("bad_session_id", [
+    "../../../etc",
+    "alice/../../etc",
+    "..",
+    "alice/../bob",
+    "/absolute/path",
+    "alice evil",
+    "alice;evil",
+    "alice\x00evil",
+    "",
+])
+def test_schema_rejects_dangerous_session_ids(bad_session_id: str):
+    """
+    ADVERSARIAL TEST: Verifies that the Pydantic schema rejects all session_id
+    values containing path traversal sequences, special characters, or null bytes.
+    """
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        TaskExecutionRequest(task_description="test", session_id=bad_session_id)
+
+
+@pytest.mark.parametrize("safe_session_id", [
+    "alice",
+    "session-123",
+    "user_abc",
+    "MySession-42",
+    "a" * 128,
+])
+def test_schema_accepts_safe_session_ids(safe_session_id: str):
+    """
+    Verifies that valid session_ids (letters, digits, hyphens, underscores)
+    pass the schema validator unchanged.
+    """
+    req = TaskExecutionRequest(task_description="test", session_id=safe_session_id)
+    assert req.session_id == safe_session_id
+
+
+def test_disabled_auth_with_sessions_emits_security_warning(tmp_path: Path, caplog):
+    """
+    ADVERSARIAL TEST: Verifies that the service emits a SECURITY WARNING when
+    auth_mode=disabled is combined with an active sessions_base_path, because
+    all requests would share the 'local-development' workspace directory.
+    """
+    import logging
+
+    sessions_dir = tmp_path / "sessions"
+    settings = build_test_settings(auth_mode="disabled")
+    settings = replace(settings, codex_sessions_base_path=str(sessions_dir))
+
+    with caplog.at_level(logging.WARNING, logger="app.services.codex_service"):
+        CodexExecutionService(settings=settings)
+
+    warning_messages = [r.message for r in caplog.records if r.levelno == logging.WARNING]
+    assert any("SECURITY WARNING" in msg for msg in warning_messages), (
+        "Expected a SECURITY WARNING when auth=disabled + sessions_base_path is set."
+    )
+
+
+def test_template_copytree_preserves_symlinks(tmp_path: Path):
+    """
+    SECURITY TEST: Verifies that template provisioning uses symlinks=True so that
+    symlinks inside the template are copied as symlinks (not followed), preventing
+    symlink-based escape attacks from within the template directory.
+    """
+    import os
+
+    sessions_dir = tmp_path / "sessions"
+    template_dir = tmp_path / "template"
+    template_dir.mkdir()
+    (template_dir / "real_file.txt").write_text("real content")
+
+    outside_file = tmp_path / "outside_secret.txt"
+    outside_file.write_text("sensitive data")
+    os.symlink(outside_file, template_dir / "symlink_to_outside.txt")
+
+    settings = build_test_settings()
+    settings = replace(
+        settings,
+        codex_sessions_base_path=str(sessions_dir),
+        codex_project_source=str(template_dir),
+    )
+
+    service = CodexExecutionService(settings=settings)
+
+    with patch("app.services.codex_service.Codex") as mock_codex_class:
+        mock_instance = MagicMock()
+        mock_codex_class.return_value.__enter__.return_value = mock_instance
+        mock_thread = MagicMock()
+        mock_instance.thread_start.return_value = mock_thread
+        mock_thread.run.return_value = MagicMock(final_response="OK")
+
+        service.execute_task(
+            TaskExecutionRequest(task_description="test"),
+            request_id="req-symlink",
+            principal=TEST_PRINCIPAL,
+        )
+
+    alice_dir = sessions_dir / "alice"
+    symlink_in_session = alice_dir / "symlink_to_outside.txt"
+    assert symlink_in_session.exists()
+    assert symlink_in_session.is_symlink(), (
+        "Symlinks in the template must be preserved as symlinks (symlinks=True), "
+        "not followed – this prevents unintended data exposure."
+    )
