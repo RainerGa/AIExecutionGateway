@@ -155,13 +155,11 @@ class CodexExecutionService:
 
     def _sanitize_session_id(self, raw_session_id: str) -> str:
         """Validate and normalize user-provided session id to one safe path segment."""
-        # CodeQL py/path-injection sanitizer: os.path.basename explicitly untaints the string
-        session_id = os.path.basename(str(raw_session_id))
-        
+        session_id = str(raw_session_id).strip()
+
         if (
             not session_id
             or session_id in {".", ".."}
-            or session_id != raw_session_id
             or not SAFE_SESSION_ID_PATTERN.fullmatch(session_id)
         ):
             raise InvalidTaskRequestError(
