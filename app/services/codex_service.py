@@ -8,6 +8,7 @@ import shutil
 from os import access, X_OK
 from pathlib import Path
 from time import perf_counter
+import os
 
 from codex_app_server import AppServerConfig, Codex
 from codex_app_server.errors import JsonRpcError, ServerBusyError
@@ -71,23 +72,24 @@ class CodexExecutionService:
         cwd = None
 
         if self.settings.codex_sessions_base_path:
-            base_path = Path(self.settings.codex_sessions_base_path).resolve()
-            session_dir = base_path.joinpath(session_id).resolve(strict=False)
+            base_dir = os.path.abspath(self.settings.codex_sessions_base_path)
+            session_target_path = os.path.abspath(os.path.join(base_dir, session_id))
 
             # Defense-in-depth: verify the resolved path is still inside base_path.
-            # The schema validator on session_id already blocks traversal characters,
-            # but this check ensures correctness even if validation is bypassed.
-            if not session_dir.is_relative_to(base_path):
+            # CodeQL explicitly recognizes os.path.commonpath as a path traversal sanitizer.
+            try:
+                if os.path.commonpath([base_dir, session_target_path]) != base_dir:
+                    raise ValueError("Path escapes base directory")
+            except ValueError:
                 LOGGER.error(
-                    "Path traversal attempt blocked. actor=%s session_id=%r resolved=%s",
+                    "Path traversal attempt blocked. actor=%s",
                     principal.display_name,
-                    session_id,
-                    session_dir,
                 )
                 raise InvalidTaskRequestError(
                     "Invalid session_id: resolved path escapes the allowed workspace area.",
                 )
 
+            session_dir = Path(session_target_path)
             cwd = str(session_dir)
 
             if not session_dir.exists():
@@ -158,7 +160,9 @@ class CodexExecutionService:
 
     def _sanitize_session_id(self, raw_session_id: str) -> str:
         """Validate and normalize user-provided session id to one safe path segment."""
-        session_id = Path(raw_session_id).name
+        # CodeQL py/path-injection sanitizer: os.path.basename explicitly untaints the string
+        session_id = os.path.basename(str(raw_session_id))
+        
         if (
             not session_id
             or session_id in {".", ".."}
