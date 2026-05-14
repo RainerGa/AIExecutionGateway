@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import shutil
 from os import access, X_OK
 from pathlib import Path
@@ -29,6 +30,7 @@ from app.security.models import UserPrincipal
 
 LOGGER = logging.getLogger(__name__)
 INHERITED_MODEL_NAME = "codex-default"
+SESSION_ID_PATTERN = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 
 
 class CodexExecutionService:
@@ -69,6 +71,7 @@ class CodexExecutionService:
             not session_id
             or session_id in {".", ".."}
             or session_id != raw_session_id
+            or not SESSION_ID_PATTERN.fullmatch(session_id)
         ):
             raise InvalidTaskRequestError(
                 "Invalid session_id: must be a single safe path segment.",
