@@ -169,7 +169,13 @@ def test_path_traversal_blocked_by_service_containment(tmp_path: Path, malicious
             request_id="req-traversal",
             principal=malicious_principal,
         )
-    assert "escapes the allowed workspace area" in str(exc_info.value)
+    # The first layer of defense (safe path segment check) now catches these
+    # before the containment check is even reached. Both errors are acceptable.
+    error_msg = str(exc_info.value)
+    assert (
+        "escapes the allowed workspace area" in error_msg
+        or "must be a single safe path segment" in error_msg
+    )
 
 
 @pytest.mark.parametrize("bad_session_id", [
