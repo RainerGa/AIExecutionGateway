@@ -30,6 +30,7 @@ from app.security.models import UserPrincipal
 
 LOGGER = logging.getLogger(__name__)
 INHERITED_MODEL_NAME = "codex-default"
+SAFE_SESSION_ID_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
 
 
 class CodexExecutionService:
@@ -74,9 +75,12 @@ class CodexExecutionService:
             )
             
         session_id = Path(raw_session_id).name
-        if session_id != raw_session_id:
-            # This is a redundant safety check given the regex above, 
-            # but it serves as defense-in-depth and clarifies intent to scanners.
+        if (
+            not session_id
+            or session_id in {".", ".."}
+            or session_id != raw_session_id
+            or not SAFE_SESSION_ID_PATTERN.fullmatch(session_id)
+        ):
             raise InvalidTaskRequestError(
                 "Invalid session_id: path traversal or special segments are not allowed.",
             )
