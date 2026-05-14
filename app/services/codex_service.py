@@ -67,18 +67,30 @@ class CodexExecutionService:
             )
 
         raw_session_id = request.session_id or principal.username
-        session_id = self._sanitize_session_id(raw_session_id)
+        
+        # Security: CodeQL-recognized path injection sanitizer (os.path.basename)
+        # We ensure the ID is a single safe path segment.
+        session_id = os.path.basename(str(raw_session_id))
+        if session_id != str(raw_session_id) or not session_id or session_id in {".", ".."}:
+            raise InvalidTaskRequestError(
+                "Invalid session_id: must be a single safe path segment.",
+            )
+
+        # Additional regex validation for safe characters
+        if not SAFE_SESSION_ID_PATTERN.fullmatch(session_id):
+            raise InvalidTaskRequestError(
+                "Invalid session_id: contains unsafe characters.",
+            )
 
         cwd = None
 
         if self.settings.codex_sessions_base_path:
-            # CodeQL-friendly path normalization
+            # Normalize and resolve base path
             base_dir = os.path.realpath(self.settings.codex_sessions_base_path)
-            # Explicitly untaint the session_id at the call site
-            safe_session_id = os.path.basename(session_id)
-            target_path = os.path.realpath(os.path.join(base_dir, safe_session_id))
+            # Construct target path using sanitized session_id
+            target_path = os.path.realpath(os.path.join(base_dir, session_id))
 
-            # Defense-in-depth: explicit prefix check is a standard CodeQL sanitizer
+            # Defense-in-depth: explicit prefix check (standard CodeQL sanitizer)
             if not target_path.startswith(base_dir + os.sep) and target_path != base_dir:
                 LOGGER.error(
                     "Path traversal attempt blocked. actor=%s",
@@ -88,12 +100,11 @@ class CodexExecutionService:
                     "Invalid session_id: resolved path escapes the allowed workspace area.",
                 )
 
-            session_dir = Path(target_path)
-            cwd = str(session_dir)
+            cwd = target_path
 
+            session_dir = Path(target_path)
             if not session_dir.exists():
                 if self.settings.codex_project_source:
-                    # Also normalize source_path to satisfy static analysis
                     source_path = Path(os.path.realpath(self.settings.codex_project_source))
                     if not source_path.exists():
                         raise ConfigurationError(f"Configured project source not found: {source_path}")
