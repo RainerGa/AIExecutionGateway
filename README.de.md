@@ -130,6 +130,66 @@ HOST=0.0.0.0 PORT=9000 APP_ACTIVE_PROFILE=production ./start_server.sh
 
 ---
 
+## 🐳 Containerisierung (Optional)
+
+Der Betrieb der API in einem Docker-Container ist eine optionale Methode für das Deployment. Dies ist besonders nützlich für Produktionsumgebungen oder wenn eine isolierte Ausführungsumgebung gewünscht ist.
+
+### Schnellstart mit Docker Compose
+
+1. **Bauen und Starten**:
+   ```bash
+   docker compose -f docker/docker-compose.yml up --build
+   ```
+
+2. **API aufrufen**:
+   Die API ist standardmäßig unter `http://localhost:8000` erreichbar.
+
+### Detaillierte Konfiguration
+
+Das Docker-Image ist so konzipiert, dass es über Umgebungsvariablen und Volume-Mounts flexibel konfiguriert werden kann.
+
+#### Umgebungsvariablen
+
+Alle unter [Umgebungsvariablen](#umgebungsvariablen) gelisteten Einstellungen können an den Container übergeben werden:
+
+```bash
+docker run -p 8000:8000 \
+  -e APP_ACTIVE_PROFILE=production \
+  -e CODEX_MODEL=gpt-4 \
+  codex-api
+```
+
+#### Konfiguration einbinden
+
+Wenn du die Konfiguration lieber über eine TOML-Datei steuerst, kannst du diese in den Container mounten:
+
+```bash
+docker run -p 8000:8000 \
+  -v $(pwd)/config/app.toml:/app/config/app.toml:ro \
+  codex-api
+```
+
+#### Persistente Workspaces
+
+Um Session-Workspaces auf dem Host-System zu speichern, mounte ein Verzeichnis für `CODEX_SESSIONS_BASE_PATH`:
+
+```bash
+docker run -p 8000:8000 \
+  -v $(pwd)/mein_workspaces:/app/workspaces \
+  -e CODEX_SESSIONS_BASE_PATH=/app/workspaces \
+  codex-api
+```
+
+### Image manuell bauen
+
+Falls du Docker Compose nicht nutzt, kannst du das Image direkt aus dem Projekt-Root bauen:
+
+```bash
+docker build -t codex-api -f docker/Dockerfile .
+```
+
+---
+
 ## 🚦 API-Endpunkte (v1)
 
 ### Task-Ausführung
