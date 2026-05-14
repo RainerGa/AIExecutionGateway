@@ -1,0 +1,23 @@
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: codex-api:latest
+    container_name: codex-api
+    ports:
+      - "8000:8000"
+    environment:
+      # These variables can be overridden in a .env file or shell
+      - HOST=0.0.0.0
+      - PORT=8000
+      - APP_ACTIVE_PROFILE=production
+      - UVICORN_LOG_LEVEL=info
+      # - CODEX_BIN=codex
+      # - CODEX_MODEL=gpt-4
+    volumes:
+      # Mount custom configuration if needed
+      # - ../config/app.toml:/app/config/app.toml:ro
+      # Mount base path for session workspaces
+      - ./workspaces:/app/workspaces
+    restart: unless-stopped

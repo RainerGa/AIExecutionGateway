@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+.python-version
+venv/
+ENV/
+
+# Project
+.git/
+.github/
+docker/
+docs/
+tests/
+.antigravity/
+
+# Data & Config
+# Exclude local app.toml if you want to use the default in the image
+# config/app.toml
+*.log

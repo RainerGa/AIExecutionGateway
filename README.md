@@ -130,6 +130,66 @@ HOST=0.0.0.0 PORT=9000 APP_ACTIVE_PROFILE=production ./start_server.sh
 
 ---
 
+## 🐳 Containerization (Optional)
+
+Running the API in a Docker container is an optional method for deployment. This is particularly useful for production environments or when you want to isolate the execution environment.
+
+### Quick Start with Docker Compose
+
+1. **Build and Start**:
+   ```bash
+   docker compose -f docker/docker-compose.yml up --build
+   ```
+
+2. **Access the API**:
+   The API will be available at `http://localhost:8000`.
+
+### Detailed Configuration
+
+The Docker image is designed to be highly configurable via environment variables and volume mounts.
+
+#### Environment Variables
+
+All settings listed in the [Environment Variables](#environment-variables) section can be passed to the container:
+
+```bash
+docker run -p 8000:8000 \
+  -e APP_ACTIVE_PROFILE=production \
+  -e CODEX_MODEL=gpt-4 \
+  codex-api
+```
+
+#### Mounting Configuration
+
+If you prefer using a TOML file for configuration, you can mount it into the container:
+
+```bash
+docker run -p 8000:8000 \
+  -v $(pwd)/config/app.toml:/app/config/app.toml:ro \
+  codex-api
+```
+
+#### Persistent Workspaces
+
+To persist session workspaces on the host, mount a directory to `CODEX_SESSIONS_BASE_PATH`:
+
+```bash
+docker run -p 8000:8000 \
+  -v $(pwd)/my_workspaces:/app/workspaces \
+  -e CODEX_SESSIONS_BASE_PATH=/app/workspaces \
+  codex-api
+```
+
+### Building the Image Manually
+
+If you don't use Docker Compose, you can build the image from the project root:
+
+```bash
+docker build -t codex-api -f docker/Dockerfile .
+```
+
+---
+
 ## 🚦 API Endpoints (v1)
 
 ### Task Execution
