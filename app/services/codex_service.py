@@ -74,7 +74,11 @@ class CodexExecutionService:
             raise InvalidTaskRequestError(
                 "Invalid session_id: must be a single safe path segment.",
             )
-        session_id = raw_session_id
+        session_id = Path(raw_session_id).name
+        if session_id != raw_session_id:
+            raise InvalidTaskRequestError(
+                "Invalid session_id: must be a single safe path segment.",
+            )
 
         cwd = None
 
