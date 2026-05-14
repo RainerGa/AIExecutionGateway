@@ -72,6 +72,7 @@ class CodexExecutionService:
         cwd = None
 
         if self.settings.codex_sessions_base_path:
+<<<<<<< HEAD
             base_path = Path(self.settings.codex_sessions_base_path).resolve()
             session_dir = base_path.joinpath(session_id).resolve(strict=False)
 
@@ -79,6 +80,17 @@ class CodexExecutionService:
             # The schema validator on session_id already blocks traversal characters,
             # but this check ensures correctness even if validation is bypassed.
             if not session_dir.is_relative_to(base_path):
+=======
+            base_dir = os.path.abspath(self.settings.codex_sessions_base_path)
+            session_target_path = os.path.abspath(os.path.join(base_dir, session_id))
+
+            # Defense-in-depth: verify the resolved path is still inside base_path.
+            # CodeQL explicitly recognizes os.path.commonpath as a path traversal sanitizer.
+            try:
+                if os.path.commonpath([base_dir, session_target_path]) != base_dir:
+                    raise ValueError("Path escapes base directory")
+            except ValueError:
+>>>>>>> 2678148 (refactor: rename target_dir to session_target_path for improved clarity in path validation logic)
                 LOGGER.error(
                     "Path traversal attempt blocked. actor=%s",
                     principal.display_name,
@@ -87,7 +99,7 @@ class CodexExecutionService:
                     "Invalid session_id: resolved path escapes the allowed workspace area.",
                 )
 
-            session_dir = Path(target_dir)
+            session_dir = Path(session_target_path)
             cwd = str(session_dir)
 
             if not session_dir.exists():
