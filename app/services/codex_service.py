@@ -96,11 +96,16 @@ class CodexExecutionService:
                     "Invalid session_id: resolved path escapes the allowed workspace area.",
                 )
 
+            if session_dir.exists() and session_dir.is_symlink():
+                raise InvalidTaskRequestError(
+                    "Invalid session_id: symlinked workspace directories are not allowed.",
+                )
+
             cwd = str(session_dir)
 
             if not session_dir.exists():
                 if self.settings.codex_project_source:
-                    source_path = Path(self.settings.codex_project_source)
+                    source_path = Path(self.settings.codex_project_source).resolve()
                     if not source_path.exists():
                         raise ConfigurationError(f"Configured project source not found: {source_path}")
                     try:
