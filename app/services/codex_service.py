@@ -89,14 +89,12 @@ class CodexExecutionService:
 
         if self.settings.codex_sessions_base_path:
             base_path = Path(self.settings.codex_sessions_base_path).resolve()
-            session_dir = (base_path / session_id).resolve()
+            session_dir = base_path.joinpath(session_id).resolve(strict=False)
 
             # Defense-in-depth: verify the resolved path is still inside base_path.
             # The schema validator on session_id already blocks traversal characters,
             # but this check ensures correctness even if validation is bypassed.
-            try:
-                session_dir.relative_to(base_path)
-            except ValueError:
+            if not session_dir.is_relative_to(base_path):
                 LOGGER.error(
                     "Path traversal attempt blocked. actor=%s session_id=%r resolved=%s",
                     principal.display_name,
