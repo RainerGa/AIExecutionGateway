@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import shutil
 from os import access, X_OK
 from pathlib import Path
@@ -64,14 +65,20 @@ class CodexExecutionService:
             )
 
         raw_session_id = request.session_id or principal.username
-        session_id = Path(raw_session_id).name
-        if (
-            not session_id
-            or session_id in {".", ".."}
-            or session_id != raw_session_id
-        ):
+        
+        # Security: Stricter validation using a whitelist regex.
+        # This prevents any character that could be interpreted by the OS or shell.
+        if not re.match(r"^[a-zA-Z0-9_\-]+$", raw_session_id):
             raise InvalidTaskRequestError(
-                "Invalid session_id: must be a single safe path segment.",
+                "Invalid session_id: must be a single safe path segment (alphanumeric, underscores, or hyphens).",
+            )
+            
+        session_id = Path(raw_session_id).name
+        if session_id != raw_session_id:
+            # This is a redundant safety check given the regex above, 
+            # but it serves as defense-in-depth and clarifies intent to scanners.
+            raise InvalidTaskRequestError(
+                "Invalid session_id: path traversal or special segments are not allowed.",
             )
 
         cwd = None
