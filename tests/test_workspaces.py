@@ -175,6 +175,7 @@ def test_path_traversal_blocked_by_service_containment(tmp_path: Path, malicious
     assert (
         "escapes the allowed workspace area" in error_msg
         or "must be a single safe path segment" in error_msg
+        or "path traversal or special segments" in error_msg
     )
 
 

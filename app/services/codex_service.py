@@ -66,6 +66,14 @@ class CodexExecutionService:
             )
 
         raw_session_id = request.session_id or principal.username
+        
+        # Security: Stricter validation using a whitelist regex.
+        # This prevents any character that could be interpreted by the OS or shell.
+        if not re.match(r"^[a-zA-Z0-9_\-]+$", raw_session_id):
+            raise InvalidTaskRequestError(
+                "Invalid session_id: must be a single safe path segment (alphanumeric, underscores, or hyphens).",
+            )
+            
         session_id = Path(raw_session_id).name
         if (
             not session_id
@@ -74,7 +82,7 @@ class CodexExecutionService:
             or not SAFE_SESSION_ID_PATTERN.fullmatch(session_id)
         ):
             raise InvalidTaskRequestError(
-                "Invalid session_id: must be a single safe path segment.",
+                "Invalid session_id: path traversal or special segments are not allowed.",
             )
 
         cwd = None
