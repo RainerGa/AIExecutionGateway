@@ -327,6 +327,9 @@ def _resolve_profile_document() -> tuple[Path, str, dict[str, object]]:
     return config_path, active_profile, merged
 
 
+_PRODUCTION_ENVIRONMENTS = {"production", "prod"}
+
+
 def _build_settings(
     config_path: Path,
     active_profile: str,
@@ -336,6 +339,14 @@ def _build_settings(
     auth_mode = str(config.get("auth", {}).get("mode", "disabled")).strip().lower()
     if auth_mode not in AUTH_MODES:
         raise ValueError(f"Unsupported auth mode configured: {auth_mode}")
+
+    environment = str(config.get("environment", "development")).strip().lower() or "development"
+    if auth_mode == "disabled" and environment in _PRODUCTION_ENVIRONMENTS:
+        raise ValueError(
+            f"Authentication mode 'disabled' is not permitted in a production environment "
+            f"(environment={environment!r}). "
+            "Configure 'trusted_header' or 'oidc_jwt' for production deployments."
+        )
 
     enable_docs = _parse_bool(config.get("enable_docs"), default=True)
     authorization_config = config.get("authorization", {})
@@ -411,7 +422,7 @@ def _build_settings(
             )
         ),
         app_version=__version__,
-        environment=str(config.get("environment", "development")).strip().lower() or "development",
+        environment=environment,
         api_prefix=str(config.get("api_prefix", "/api/v1")).strip() or "/api/v1",
         docs_url="/docs" if enable_docs else None,
         redoc_url="/redoc" if enable_docs else None,

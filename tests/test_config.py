@@ -163,3 +163,24 @@ def test_build_settings_invalid_auth_mode():
     config["auth"] = {"mode": "invalid"}
     with pytest.raises(ValueError, match="Unsupported auth mode"):
         _build_settings(Path("dummy"), "test", config)
+
+
+@pytest.mark.parametrize("env_name", ["production", "prod"])
+def test_build_settings_disabled_auth_in_production_raises_error(env_name: str):
+    """The system must refuse to start with disabled auth in production environments."""
+    config = _default_config_document()
+    config["auth"] = {"mode": "disabled"}
+    config["environment"] = env_name
+    with pytest.raises(ValueError, match="Authentication mode 'disabled' is not permitted in a production environment"):
+        _build_settings(Path("dummy"), "test", config)
+
+
+@pytest.mark.parametrize("env_name", ["development", "test", "staging"])
+def test_build_settings_disabled_auth_in_non_production_is_allowed(env_name: str):
+    """The system may start with disabled auth in non-production environments."""
+    config = _default_config_document()
+    config["auth"] = {"mode": "disabled"}
+    config["environment"] = env_name
+    settings = _build_settings(Path("dummy"), "test", config)
+    assert settings.auth.mode == "disabled"
+    assert settings.environment == env_name
