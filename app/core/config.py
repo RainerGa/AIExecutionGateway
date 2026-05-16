@@ -19,17 +19,37 @@ AUTH_MODES = {"disabled", "trusted_header", "oidc_jwt"}
 
 
 def _project_root() -> Path:
-    """Return the repository-local project root that contains the config directory."""
+    """Returns the repository-local project root directory.
+
+    This identifies the root directory that contains the `config` directory
+    and the main application entry points.
+
+    Returns:
+        The absolute path to the project root.
+    """
     return Path(__file__).resolve().parents[2]
 
 
 def _default_config_file_path() -> Path:
-    """Return the default config file path used when no override is provided."""
+    """Returns the default configuration file path.
+
+    The default path is `<project_root>/config/app.toml`.
+
+    Returns:
+        The absolute path to the default configuration file.
+    """
     return _project_root() / "config" / "app.toml"
 
 
 def _parse_csv(value: str | None) -> tuple[str, ...]:
-    """Convert a comma-separated environment value into a normalized tuple."""
+    """Converts a comma-separated string into a normalized tuple of strings.
+
+    Args:
+        value: The comma-separated string to parse.
+
+    Returns:
+        A tuple of trimmed, non-empty strings.
+    """
     if not value:
         return ()
 
@@ -40,7 +60,18 @@ def _parse_csv(value: str | None) -> tuple[str, ...]:
 def _to_string_tuple(
     value: object, *, fallback: tuple[str, ...] = ()
 ) -> tuple[str, ...]:
-    """Normalize strings or lists of strings into an immutable tuple representation."""
+    """Normalizes various input types into an immutable tuple of strings.
+
+    Handles single strings (as CSV), lists, and tuples. Useful for normalizing
+    configuration values that can be provided in multiple formats.
+
+    Args:
+        value: The value to normalize.
+        fallback: The value to return if `value` is None or invalid.
+
+    Returns:
+        An immutable tuple of normalized strings.
+    """
     if value is None:
         return fallback
 
@@ -59,7 +90,17 @@ def _to_string_tuple(
 
 
 def _parse_bool(value: object, *, default: bool) -> bool:
-    """Parse booleans from TOML-native or environment-style truthy values."""
+    """Parses a boolean value from a variety of representations.
+
+    Supports native booleans and strings like "true", "yes", "on", "1" (case-insensitive).
+
+    Args:
+        value: The value to parse.
+        default: The fallback value if parsing fails.
+
+    Returns:
+        The parsed boolean value or the default.
+    """
     if isinstance(value, bool):
         return value
 
@@ -74,7 +115,18 @@ def _parse_bool(value: object, *, default: bool) -> bool:
 
 
 def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
-    """Merge nested dictionaries while replacing scalar and list values."""
+    """Recursively merges two dictionaries.
+
+    Values in `override` will overwrite values in `base`. If both values are
+    dictionaries, they are merged recursively. Scalars and lists are replaced.
+
+    Args:
+        base: The base dictionary.
+        override: The dictionary containing overrides.
+
+    Returns:
+        A new dictionary containing the merged result.
+    """
     merged = dict(base)
     for key, value in override.items():
         base_value = merged.get(key)
@@ -87,7 +139,22 @@ def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any
 
 @dataclass(frozen=True, slots=True)
 class OidcSettings:
-    """OIDC token-validation settings for enterprise SSO integration."""
+    """OIDC token-validation settings for enterprise SSO integration.
+
+    Attributes:
+        issuer: The expected OIDC issuer URI.
+        audience: The expected OIDC audience (client ID).
+        jwks_url: The URI for fetching JSON Web Key Sets.
+        algorithms: Supported signing algorithms.
+        required_claims: Claims that must be present in the token.
+        subject_claim: Claim identifying the subject (unique user ID).
+        username_claim: Claim containing the display username.
+        email_claim: Claim containing the user's email.
+        groups_claim: Claim containing the user's groups.
+        roles_claim: Claim containing the user's application roles.
+        tenant_claim: Claim identifying the tenant (for multi-tenant setups).
+        clock_skew_seconds: Permitted time difference for expiration checks.
+    """
 
     issuer: str | None
     audience: str | None
@@ -105,7 +172,19 @@ class OidcSettings:
 
 @dataclass(frozen=True, slots=True)
 class TrustedHeaderSettings:
-    """Header names and trust boundaries for reverse-proxy authentication."""
+    """Header names and trust boundaries for reverse-proxy authentication.
+
+    Used when the API is behind a trusted proxy (like Nginx or an Auth Gateway)
+    that performs authentication and passes user info via headers.
+
+    Attributes:
+        user_header: Header name for the username.
+        email_header: Header name for the email address.
+        groups_header: Header name for user groups.
+        roles_header: Header name for application roles.
+        group_separator: Character used to separate multiple groups/roles.
+        trusted_proxy_ips: List of CIDRs or IPs allowed to provide these headers.
+    """
 
     user_header: str
     email_header: str
@@ -117,7 +196,18 @@ class TrustedHeaderSettings:
 
 @dataclass(frozen=True, slots=True)
 class AuthorizationSettings:
-    """Role-mapping and access-control settings."""
+    """Role-mapping and access-control settings.
+
+    Defines which user groups or roles are required to access specific
+    features of the API.
+
+    Attributes:
+        enabled: Whether authorization checks are enforced.
+        execute_task_roles: Roles permitted to trigger task execution.
+        admin_groups: Groups mapped to administrative privileges.
+        user_groups: Groups mapped to standard user privileges.
+        readonly_groups: Groups mapped to read-only access.
+    """
 
     enabled: bool
     execute_task_roles: tuple[str, ...]
@@ -128,7 +218,14 @@ class AuthorizationSettings:
 
 @dataclass(frozen=True, slots=True)
 class AuthSettings:
-    """Top-level authentication configuration for the API."""
+    """Top-level authentication configuration for the API.
+
+    Attributes:
+        mode: The active authentication mode ("disabled", "trusted_header", or "oidc_jwt").
+        oidc: Configuration for OIDC-based authentication.
+        trusted_header: Configuration for proxy-header-based authentication.
+        authorization: Configuration for role-based access control.
+    """
 
     mode: str
     oidc: OidcSettings
@@ -138,14 +235,25 @@ class AuthSettings:
 
 @dataclass(frozen=True, slots=True)
 class AuditSettings:
-    """Feature flags for audit-related runtime behavior."""
+    """Feature flags for audit-related runtime behavior.
+
+    Attributes:
+        enabled: Whether audit logging for security-sensitive actions is enabled.
+    """
 
     enabled: bool
 
 
 @dataclass(frozen=True, slots=True)
 class MonitoringSettings:
-    """Runtime controls for the live monitoring subsystem."""
+    """Runtime controls for the live monitoring subsystem.
+
+    Attributes:
+        enabled: Whether the monitoring service is active.
+        history_size: Number of recent tasks and events to keep in memory.
+        stream_enabled: Whether live event streaming (SSE) is enabled.
+        refresh_interval_ms: Default UI polling/refresh interval.
+    """
 
     enabled: bool
     history_size: int
@@ -155,7 +263,32 @@ class MonitoringSettings:
 
 @dataclass(frozen=True, slots=True)
 class AppSettings:
-    """Immutable runtime configuration for the REST API service."""
+    """Immutable runtime configuration for the REST API service.
+
+    This class aggregates all settings required to run the application,
+    organized into logical subsystems.
+
+    Attributes:
+        active_profile: The name of the currently active configuration profile.
+        config_file_path: The absolute path to the configuration file used.
+        app_name: The display name of the application.
+        app_description: A brief summary of the application's purpose.
+        app_version: The version string of the application.
+        environment: The deployment environment (e.g., "development", "production").
+        api_prefix: The base path prefix for all API routes.
+        docs_url: The path for the Swagger UI documentation.
+        redoc_url: The path for the ReDoc documentation.
+        openapi_url: The path for the OpenAPI specification JSON.
+        log_level: The configured logging level.
+        cors_allowed_origins: List of origins permitted for CORS.
+        codex_bin: Path to the local Codex execution binary.
+        codex_model: Default model identifier for Codex tasks.
+        codex_project_source: Root path for Codex project sources.
+        codex_sessions_base_path: Base path for isolated session workspaces.
+        auth: Authentication and authorization settings.
+        audit: Security auditing settings.
+        monitoring: Runtime observability settings.
+    """
 
     active_profile: str
     config_file_path: str
@@ -179,7 +312,15 @@ class AppSettings:
 
 
 def _default_config_document() -> dict[str, Any]:
-    """Provide in-code defaults that are safe for local development."""
+    """Provides in-code default settings safe for local development.
+
+    This function returns a dictionary structure that matches the expected
+    TOML layout, providing fallback values when no configuration file
+    or environment variables are present.
+
+    Returns:
+        A dictionary containing the default configuration structure.
+    """
     return {
         "active_profile": "home",
         "defaults": {
@@ -247,7 +388,14 @@ def _default_config_document() -> dict[str, Any]:
 
 
 def _resolve_config_file_path() -> Path:
-    """Resolve the configuration file path from environment or repository defaults."""
+    """Resolves the configuration file path from environment or repository defaults.
+
+    Checks the `APP_CONFIG_FILE` environment variable first. If not set,
+    it falls back to the repository-local default path.
+
+    Returns:
+        The absolute path to the configuration file.
+    """
     configured_path = (os.getenv("APP_CONFIG_FILE") or "").strip()
     if not configured_path:
         return _default_config_file_path()
@@ -259,7 +407,19 @@ def _resolve_config_file_path() -> Path:
 
 
 def _load_config_document(path: Path) -> dict[str, Any]:
-    """Load the TOML document when present, or return an empty structure."""
+    """Loads a TOML document from the specified path.
+
+    Args:
+        path: The path to the TOML file.
+
+    Returns:
+        A dictionary representation of the TOML document, or an empty
+        dictionary if the file does not exist (unless explicitly configured).
+
+    Raises:
+        FileNotFoundError: If `APP_CONFIG_FILE` was explicitly set but the
+            file does not exist.
+    """
     if not path.exists():
         if os.getenv("APP_CONFIG_FILE"):
             raise FileNotFoundError(
@@ -272,7 +432,18 @@ def _load_config_document(path: Path) -> dict[str, Any]:
 
 
 def _apply_env_overrides(config: dict[str, Any]) -> dict[str, Any]:
-    """Apply environment-based overrides after profile resolution."""
+    """Applies environment-based overrides to the configuration dictionary.
+
+    This function maps well-known environment variables (like `APP_ENV`,
+    `AUTH_MODE`, etc.) to their respective locations in the configuration
+    structure. These overrides take precedence over file-based settings.
+
+    Args:
+        config: The base configuration dictionary to override.
+
+    Returns:
+        A new dictionary containing the overridden settings.
+    """
     overridden = dict(config)
     auth_block = dict(overridden.get("auth", {}))
     authorization_block = dict(overridden.get("authorization", {}))
@@ -348,7 +519,17 @@ def _apply_env_overrides(config: dict[str, Any]) -> dict[str, Any]:
 
 
 def _resolve_profile_document() -> tuple[Path, str, dict[str, Any]]:
-    """Resolve the active profile and return its merged configuration."""
+    """Resolves the active profile and returns its merged configuration.
+
+    This is the main resolution entry point. It:
+    1. Resolves the config file path.
+    2. Loads the defaults and the file.
+    3. Merges the file's defaults and the active profile's settings.
+    4. Applies environment overrides.
+
+    Returns:
+        A tuple of (config_path, active_profile_name, merged_config_dict).
+    """
     config_path = _resolve_config_file_path()
     default_document = _default_config_document()
     loaded_document = _load_config_document(config_path)
@@ -374,7 +555,23 @@ def _build_settings(
     active_profile: str,
     config: dict[str, Any],
 ) -> AppSettings:
-    """Convert a merged config document into a typed settings object."""
+    """Converts a merged config document into a typed AppSettings object.
+
+    This function performs validation (e.g., ensuring auth is not disabled
+    in production) and normalizes values into their respective dataclasses.
+
+    Args:
+        config_path: Path to the configuration file used.
+        active_profile: Name of the active profile.
+        config: The merged raw configuration dictionary.
+
+    Returns:
+        A fully initialized and validated AppSettings instance.
+
+    Raises:
+        ValueError: If the configuration is invalid or insecure for the
+            detected environment.
+    """
     auth_mode = str(config.get("auth", {}).get("mode", "disabled")).strip().lower()
     if auth_mode not in AUTH_MODES:
         raise ValueError(f"Unsupported auth mode configured: {auth_mode}")
@@ -540,6 +737,14 @@ def _build_settings(
 
 @lru_cache
 def get_settings() -> AppSettings:
-    """Build and cache the settings object for the current process."""
+    """Builds and caches the AppSettings object for the current process.
+
+    This function is the primary way for the application to access its
+    configuration. It uses `lru_cache` to ensure the resolution logic
+    only runs once.
+
+    Returns:
+        The cached AppSettings instance.
+    """
     config_path, active_profile, merged_config = _resolve_profile_document()
     return _build_settings(config_path, active_profile, merged_config)

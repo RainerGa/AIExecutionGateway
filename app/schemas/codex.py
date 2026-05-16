@@ -13,7 +13,14 @@ _SAFE_SESSION_ID_RE = re.compile(r"^[a-zA-Z0-9_\-]+$")
 
 
 class TaskExecutionRequest(BaseModel):
-    """Validated API contract for a single Codex task execution request."""
+    """Validated API contract for a single Codex task execution request.
+
+    Attributes:
+        task_description: Natural-language instruction that Codex should execute.
+        session_id: Optional identifier to isolate this execution within a user
+            session workspace. Must consist only of letters, digits, hyphens,
+            and underscores.
+    """
 
     task_description: str = Field(
         ...,
@@ -34,7 +41,19 @@ class TaskExecutionRequest(BaseModel):
     @field_validator("task_description")
     @classmethod
     def normalize_task_description(cls, value: str) -> str:
-        """Reject empty or whitespace-only tasks after trimming input noise."""
+        """Normalizes and validates the task description.
+
+        Rejects empty or whitespace-only tasks.
+
+        Args:
+            value: The raw task description string.
+
+        Returns:
+            The trimmed task description.
+
+        Raises:
+            ValueError: If the description is blank.
+        """
         normalized = value.strip()
         if not normalized:
             raise ValueError("task_description must not be blank.")
@@ -43,10 +62,19 @@ class TaskExecutionRequest(BaseModel):
     @field_validator("session_id")
     @classmethod
     def validate_session_id(cls, value: str | None) -> str | None:
-        """Enforce a strict whitelist to prevent path traversal and injection attacks.
+        """Enforces a strict whitelist for session IDs.
 
-        Only alphanumeric characters, hyphens, and underscores are permitted.
-        This blocks sequences such as '../', '/', null bytes, and encoded variants.
+        Only alphanumeric characters, hyphens, and underscores are permitted
+        to prevent path traversal and injection attacks.
+
+        Args:
+            value: The raw session ID.
+
+        Returns:
+            The validated session ID.
+
+        Raises:
+            ValueError: If the session ID contains illegal characters.
         """
         if value is None:
             return None
@@ -80,7 +108,14 @@ class TaskExecutionRequest(BaseModel):
 
 
 class TaskExecutionMetadata(BaseModel):
-    """Operational metadata returned with each completed task execution."""
+    """Operational metadata returned with each completed task execution.
+
+    Attributes:
+        request_id: Correlation ID for tracing the request.
+        model: Effective model used for the run.
+        duration_ms: Execution time in milliseconds.
+        completed_at: UTC timestamp of the completed execution.
+    """
 
     request_id: str = Field(..., description="Correlation id for tracing the request.")
     model: str = Field(
@@ -95,7 +130,13 @@ class TaskExecutionMetadata(BaseModel):
 
 
 class TaskExecutionResponse(BaseModel):
-    """API response containing Codex output and operational metadata."""
+    """API response containing Codex output and operational metadata.
+
+    Attributes:
+        result: Final textual response returned by Codex.
+        logs: List of execution log messages (reserved for future use).
+        metadata: Execution metadata including timing and ID.
+    """
 
     result: str = Field(..., description="Final textual response returned by Codex.")
     logs: list[str] = Field(

@@ -15,7 +15,14 @@ LOGGER = logging.getLogger(__name__)
 
 
 def _request_id_from_request(request: Request) -> str:
-    """Return the correlation id from request state or a safe fallback."""
+    """Returns the correlation ID from the request state or a safe fallback.
+
+    Args:
+        request: The incoming FastAPI request.
+
+    Returns:
+        The request ID string or "-" if not found.
+    """
     return getattr(request.state, "request_id", "-")
 
 
@@ -23,7 +30,19 @@ async def handle_application_error(
     request: Request,
     exc: ApplicationError,
 ) -> JSONResponse:
-    """Convert controlled application exceptions into stable JSON responses."""
+    """Converts controlled application exceptions into stable JSON responses.
+
+    This handler processes all exceptions that inherit from `ApplicationError`,
+    ensuring they are returned with the correct status code and a structured
+    error payload.
+
+    Args:
+        request: The incoming FastAPI request.
+        exc: The caught application-specific exception.
+
+    Returns:
+        A JSONResponse containing the structured error detail.
+    """
     payload = ErrorResponse(
         error=ErrorDetail(
             code=exc.error_code,
@@ -43,7 +62,18 @@ async def handle_validation_error(
     request: Request,
     exc: RequestValidationError,
 ) -> JSONResponse:
-    """Return structured validation errors without leaking framework internals."""
+    """Returns structured validation errors without leaking framework internals.
+
+    This handler overrides the default FastAPI validation error response to
+    match the application's global error format.
+
+    Args:
+        request: The incoming FastAPI request.
+        exc: The validation error raised by FastAPI/Pydantic.
+
+    Returns:
+        A JSONResponse with status 422 and a structured error payload.
+    """
     payload = ErrorResponse(
         error=ErrorDetail(
             code="request_validation_error",
@@ -59,7 +89,19 @@ async def handle_unexpected_error(
     request: Request,
     exc: Exception,
 ) -> JSONResponse:
-    """Log and mask unhandled exceptions behind a stable 500 response."""
+    """Logs and masks unhandled exceptions behind a stable 500 response.
+
+    This is the final safety net for any exception not explicitly handled.
+    It logs the full stack trace but returns a generic error message to
+    the client to prevent information leakage.
+
+    Args:
+        request: The incoming FastAPI request.
+        exc: The unhandled exception.
+
+    Returns:
+        A JSONResponse with status 500 and a generic error payload.
+    """
     LOGGER.exception("Unhandled application exception: %s", exc)
     payload = ErrorResponse(
         error=ErrorDetail(
@@ -72,7 +114,11 @@ async def handle_unexpected_error(
 
 
 def register_exception_handlers(app: FastAPI) -> None:
-    """Attach all shared exception handlers to the FastAPI application."""
+    """Attaches all shared exception handlers to the FastAPI application.
+
+    Args:
+        app: The FastAPI application instance to configure.
+    """
     app.add_exception_handler(ApplicationError, handle_application_error)  # type: ignore[arg-type]
     app.add_exception_handler(RequestValidationError, handle_validation_error)  # type: ignore[arg-type]
     app.add_exception_handler(Exception, handle_unexpected_error)

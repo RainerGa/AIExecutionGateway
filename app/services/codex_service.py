@@ -40,13 +40,28 @@ FALLBACK_SESSION_HASH_LENGTH = 12
 
 
 class CodexExecutionService:
-    """Application service responsible for executing tasks through Codex."""
+    """Application service responsible for executing tasks through Codex.
+
+    This service encapsulates the logic for provisioning workspaces,
+    handling session isolation, and orchestrating the execution of tasks
+    via the underlying Codex SDK.
+
+    Attributes:
+        settings: The current application settings.
+        monitoring_service: Optional service for tracking live activity.
+    """
 
     def __init__(
         self,
         settings: AppSettings,
         monitoring_service: MonitoringService | None = None,
     ) -> None:
+        """Initializes the Codex execution service.
+
+        Args:
+            settings: The application configuration.
+            monitoring_service: Optional monitoring service for event tracking.
+        """
         self.settings = settings
         self.monitoring_service = monitoring_service
         self._warn_if_misconfigured()
@@ -58,7 +73,29 @@ class CodexExecutionService:
         request_id: str,
         principal: UserPrincipal,
     ) -> TaskExecutionResponse:
-        """Execute one validated task request and map it into an API response."""
+        """Executes a validated task request and maps it into an API response.
+
+        This is the core logic for task execution. It:
+        1. Resolves the session and workspace.
+        2. Provisions the workspace (if sessions are enabled).
+        3. Invokes the Codex runtime.
+        4. Handles and translates errors.
+        5. Returns a structured response.
+
+        Args:
+            request: The task execution parameters.
+            request_id: Unique correlation ID for the request.
+            principal: The user performing the task.
+
+        Returns:
+            A `TaskExecutionResponse` containing the output and metadata.
+
+        Raises:
+            InvalidTaskRequestError: If the request is logically invalid.
+            CodexRuntimeBusyError: If the upstream runtime is at capacity.
+            ConfigurationError: If the local environment is misconfigured.
+            CodexExecutionError: For any other execution failures.
+        """
         start = perf_counter()
         LOGGER.info(
             "Executing Codex task. actor=%s auth_mode=%s roles=%s task_length=%s model_override=%s",
@@ -220,13 +257,34 @@ class CodexExecutionService:
         request: TaskExecutionRequest,
         principal: UserPrincipal,
     ) -> str:
-        """Resolve the effective workspace session id for this task."""
+        """Resolves the effective workspace session ID for this task.
+
+        Args:
+            request: The task execution request.
+            principal: The user performing the task.
+
+        Returns:
+            A sanitized string to be used as a session/directory identifier.
+        """
         if request.session_id is not None:
             return self._validate_explicit_session_id(request.session_id)
         return self._derive_principal_session_id(principal)
 
     def _validate_explicit_session_id(self, raw_session_id: str) -> str:
-        """Validate a client-provided session id as one safe path segment."""
+        """Validates a client-provided session ID as a safe path segment.
+
+        Ensures the ID contains no path traversal characters and fits within
+        the permitted character set and length.
+
+        Args:
+            raw_session_id: The session ID provided by the client.
+
+        Returns:
+            The validated session ID.
+
+        Raises:
+            InvalidTaskRequestError: If the session ID is insecure or malformed.
+        """
         session_id = os.path.basename(str(raw_session_id))
 
         if (
@@ -242,7 +300,17 @@ class CodexExecutionService:
         return session_id
 
     def _derive_principal_session_id(self, principal: UserPrincipal) -> str:
-        """Build a deterministic safe session id from the authenticated identity."""
+        """Builds a deterministic safe session ID from the authenticated identity.
+
+        This is used when no explicit session ID is provided by the client.
+        It maps the user's identity to a filesystem-safe directory name.
+
+        Args:
+            principal: The user principal.
+
+        Returns:
+            A sanitized, identity-linked session ID.
+        """
         raw_identity = principal.username or principal.subject or "local-development"
         session_id = os.path.basename(str(raw_identity))
         if (
@@ -276,7 +344,13 @@ class CodexExecutionService:
         return f"{normalized_identity}-{digest}"
 
     def readiness_components(self) -> list[HealthComponent]:
-        """Return a lightweight readiness report for infrastructure probing."""
+        """Returns a lightweight readiness report for infrastructure probing.
+
+        Checks if the configured Codex binary is present and executable.
+
+        Returns:
+            A list of health components indicating readiness.
+        """
         codex_bin = self.settings.codex_bin or "codex on PATH or packaged default"
         is_ready = True
 
@@ -305,7 +379,14 @@ class CodexExecutionService:
     def _build_app_server_config(
         self, cwd: str | None = None
     ) -> AppServerConfig | None:
-        """Build the SDK runtime configuration."""
+        """Builds the SDK runtime configuration.
+
+        Args:
+            cwd: The current working directory for the Codex process.
+
+        Returns:
+            An `AppServerConfig` instance or None if no configuration is possible.
+        """
         if not self.settings.codex_bin and not cwd:
             return None
         return AppServerConfig(
@@ -314,7 +395,11 @@ class CodexExecutionService:
         )
 
     def _build_thread_start_kwargs(self) -> dict[str, str]:
-        """Provide optional thread start parameters for the active environment."""
+        """Provides optional thread start parameters for the active environment.
+
+        Returns:
+            A dictionary of keyword arguments for `codex.thread_start`.
+        """
         if not self.settings.codex_model:
             return {}
         return {"model": self.settings.codex_model}
@@ -325,7 +410,13 @@ class CodexExecutionService:
         exc: Exception,
         start: float,
     ) -> None:
-        """Record a failed task in the monitoring subsystem when enabled."""
+        """Records a failed task in the monitoring subsystem when enabled.
+
+        Args:
+            request_id: Unique correlation ID for the request.
+            exc: The exception that caused the failure.
+            start: The performance counter timestamp when the task started.
+        """
         if self.monitoring_service is None:
             return
         self.monitoring_service.record_task_failed(
@@ -336,10 +427,10 @@ class CodexExecutionService:
         )
 
     def _warn_if_misconfigured(self) -> None:
-        """Emit a prominent warning for configurations that weaken workspace isolation.
+        """Emits a prominent warning for configurations that weaken workspace isolation.
 
-        When authentication is disabled every request resolves to the same
-        ``local-development`` principal.  If session workspaces are active at
+        When authentication is disabled, every request resolves to the same
+        ``local-development`` principal. If session workspaces are active at
         the same time, all concurrent requests share a *single* workspace
         directory, which completely undermines the isolation guarantee.
         This combination is only acceptable for local single-user development.

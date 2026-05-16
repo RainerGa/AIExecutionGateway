@@ -22,7 +22,17 @@ router = APIRouter()
 async def read_liveness(
     settings: AppSettings = Depends(get_settings),
 ) -> HealthResponse:
-    """Return the lightweight liveness state of the API process."""
+    """Returns the lightweight liveness state of the API process.
+
+    This probe is used by orchestrators to determine if the container
+    should be restarted. It does not check external dependencies.
+
+    Args:
+        settings: The current application settings.
+
+    Returns:
+        A `HealthResponse` with the status "up".
+    """
     return HealthResponse(
         status="up",
         service=settings.app_name,
@@ -45,7 +55,20 @@ async def read_readiness(
     service: CodexExecutionService = Depends(get_codex_execution_service),
     auth_service: AuthenticationService = Depends(get_authentication_service),
 ) -> HealthResponse:
-    """Return readiness information for orchestration and load balancers."""
+    """Returns readiness information for orchestration and load balancers.
+
+    This probe checks if the application's core components (like the
+    Codex runtime and authentication services) are correctly configured
+    and reachable.
+
+    Args:
+        settings: The current application settings.
+        service: The Codex execution service instance.
+        auth_service: The authentication service instance.
+
+    Returns:
+        A `HealthResponse` indicating if the service is "up" or "degraded".
+    """
     components = [
         component
         if isinstance(component, HealthComponent)

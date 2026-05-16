@@ -8,7 +8,13 @@ from pydantic import BaseModel, Field
 
 
 class HealthComponent(BaseModel):
-    """Represents the health of one runtime dependency or subsystem."""
+    """Represents the health of one runtime dependency or subsystem.
+
+    Attributes:
+        name: Name of the component (e.g., "codex_runtime").
+        status: Current state ("up", "down", or "degraded").
+        details: Human-readable status details or error messages.
+    """
 
     name: str
     status: str
@@ -16,7 +22,16 @@ class HealthComponent(BaseModel):
 
 
 class HealthResponse(BaseModel):
-    """Shared schema for liveness and readiness responses."""
+    """Shared schema for liveness and readiness responses.
+
+    Attributes:
+        status: Overall service state ("up" or "degraded").
+        service: Display name of the service.
+        version: Application version.
+        environment: Deployment environment name.
+        timestamp: UTC timestamp of the health check.
+        components: Detailed health state of individual subsystems.
+    """
 
     status: str = Field(..., description="Overall service state.")
     service: str = Field(..., description="Service name for dashboards and probes.")

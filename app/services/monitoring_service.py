@@ -42,9 +42,23 @@ class _SessionState:
 
 
 class MonitoringService:
-    """Track live request/task/session state for admin-facing monitoring."""
+    """Tracks live request, task, and session state for admin-facing observability.
+
+    This service maintains an in-memory record of all active and recent
+    operations. It is designed to be thread-safe using a reentrant lock.
+
+    Attributes:
+        enabled (bool): Whether the monitoring subsystem is active.
+        stream_enabled (bool): Whether event streaming is enabled.
+        refresh_interval_ms (int): UI refresh interval in milliseconds.
+    """
 
     def __init__(self, settings: MonitoringSettings) -> None:
+        """Initializes the monitoring service.
+
+        Args:
+            settings: The monitoring configuration settings.
+        """
         self._settings = settings
         self._lock = RLock()
         self._active_tasks: dict[str, TaskRuntimeRecord] = {}
@@ -78,6 +92,14 @@ class MonitoringService:
         path: str,
         client_host: str | None,
     ) -> None:
+        """Emits an event indicating that a new HTTP request has started.
+
+        Args:
+            request_id: Unique correlation ID for the request.
+            method: HTTP method (e.g., GET, POST).
+            path: The request URI path.
+            client_host: The IP or hostname of the calling client.
+        """
         self._emit(
             "request_started",
             message=f"{method} {path}",
@@ -91,6 +113,12 @@ class MonitoringService:
         request_id: str,
         principal: UserPrincipal,
     ) -> None:
+        """Emits an event indicating that a user principal has been authenticated.
+
+        Args:
+            request_id: Unique correlation ID for the request.
+            principal: The resolved user principal.
+        """
         self._emit(
             "principal_resolved",
             message=f"Principal resolved for {principal.display_name}",
@@ -112,6 +140,15 @@ class MonitoringService:
         task_description: str,
         model: str,
     ) -> None:
+        """Records the start of a Codex task and updates the session state.
+
+        Args:
+            request_id: Unique correlation ID for the request.
+            session_id: The ID of the session the task belongs to.
+            principal: The user principal performing the task.
+            task_description: A description of the task being executed.
+            model: The name of the model being used.
+        """
         if not self.enabled:
             return
         now = _utcnow()
@@ -170,6 +207,14 @@ class MonitoringService:
         workspace_path: str,
         created: bool,
     ) -> None:
+        """Records a workspace allocation event (creation or reuse).
+
+        Args:
+            request_id: Unique correlation ID for the request.
+            session_id: The ID of the session.
+            workspace_path: The absolute path to the workspace directory.
+            created: True if the workspace was created, False if reused.
+        """
         if not self.enabled:
             return
         now = _utcnow()
@@ -199,6 +244,13 @@ class MonitoringService:
         duration_ms: int,
         result_length: int,
     ) -> None:
+        """Records the successful completion of a task.
+
+        Args:
+            request_id: Unique correlation ID for the request.
+            duration_ms: Time taken to complete the task in milliseconds.
+            result_length: Length of the generated result in characters.
+        """
         if not self.enabled:
             return
         self._finish_task(
@@ -216,6 +268,14 @@ class MonitoringService:
         error_message: str,
         duration_ms: int | None = None,
     ) -> None:
+        """Records a task failure.
+
+        Args:
+            request_id: Unique correlation ID for the request.
+            error_type: A stable string identifier for the error type.
+            error_message: A human-readable error message.
+            duration_ms: Optional time taken before the failure occurred.
+        """
         if not self.enabled:
             return
         self._finish_task(
@@ -227,6 +287,11 @@ class MonitoringService:
         )
 
     def snapshot(self) -> MonitoringSnapshot:
+        """Creates a deep-copy snapshot of the current monitoring state.
+
+        Returns:
+            A `MonitoringSnapshot` object containing all active/recent data.
+        """
         with self._lock:
             active_tasks = sorted(
                 (
@@ -274,6 +339,15 @@ class MonitoringService:
         )
 
     def events_after(self, event_id: int, *, limit: int = 50) -> list[MonitoringEvent]:
+        """Returns a list of events that occurred after the specified ID.
+
+        Args:
+            event_id: The ID to start from (exclusive).
+            limit: Maximum number of events to return.
+
+        Returns:
+            A list of matching `MonitoringEvent` objects.
+        """
         with self._lock:
             return [
                 event.model_copy(deep=True)
@@ -282,6 +356,11 @@ class MonitoringService:
             ][:limit]
 
     def latest_event_id(self) -> int:
+        """Returns the ID of the most recent event.
+
+        Returns:
+            The event ID, or 0 if no events exist.
+        """
         with self._lock:
             return self._events[-1].event_id if self._events else 0
 
@@ -295,6 +374,16 @@ class MonitoringService:
         error_type: str | None = None,
         error_message: str | None = None,
     ) -> None:
+        """Internal helper to transition a task from active to recent history.
+
+        Args:
+            request_id: Unique correlation ID for the request.
+            final_status: The final status of the task ("completed" or "failed").
+            duration_ms: Optional total duration of the task.
+            result_length: Optional length of the result.
+            error_type: Optional error type for failures.
+            error_message: Optional human-readable error message.
+        """
         now = _utcnow()
         with self._lock:
             task = self._active_tasks.pop(request_id, None)
@@ -342,6 +431,17 @@ class MonitoringService:
         status: str | None = None,
         details: dict[str, str | int | bool | None] | None = None,
     ) -> None:
+        """Appends a new event to the internal event log.
+
+        Args:
+            event_type: The category of the event.
+            message: A human-readable description of the event.
+            request_id: Optional correlation ID.
+            session_id: Optional session ID.
+            username: Optional username.
+            status: Optional task/request status.
+            details: Optional structured details.
+        """
         if not self.enabled:
             return
         with self._lock:
@@ -361,7 +461,14 @@ class MonitoringService:
     def _prune_idle_sessions_locked(
         self, *, protected_session_id: str | None = None
     ) -> None:
-        """Keep the monitoring session map bounded without evicting active sessions."""
+        """Keeps the monitoring session map bounded without evicting active sessions.
+
+        This method must be called while holding `self._lock`.
+
+        Args:
+            protected_session_id: An optional session ID that should not be
+                pruned even if it is idle (e.g., the session currently being updated).
+        """
         overflow = len(self._sessions) - self._session_retention_limit
         if overflow <= 0:
             return

@@ -8,7 +8,19 @@ from pydantic import BaseModel, Field
 
 
 class MonitoringEvent(BaseModel):
-    """One structured runtime event emitted by the monitoring subsystem."""
+    """One structured runtime event emitted by the monitoring subsystem.
+
+    Attributes:
+        event_id: Monotonically increasing ID for stream synchronization.
+        event_type: Category of the event (e.g., "task_started").
+        occurred_at: UTC timestamp of the event.
+        request_id: Optional correlation ID.
+        session_id: Optional session ID.
+        username: Optional username of the actor.
+        status: Optional status related to the event.
+        message: Human-readable event description.
+        details: Structured technical details.
+    """
 
     event_id: int
     event_type: str
@@ -22,7 +34,29 @@ class MonitoringEvent(BaseModel):
 
 
 class TaskRuntimeRecord(BaseModel):
-    """Current or recently completed task execution state."""
+    """Current or recently completed task execution state.
+
+    Attributes:
+        request_id: Unique correlation ID.
+        session_id: Session identifier.
+        username: Actor username.
+        email: Actor email.
+        auth_mode: Authentication method used.
+        roles: User roles at the time of execution.
+        status: Execution status ("running", "completed", "failed").
+        started_at: When the task was received.
+        last_updated_at: Last heartbeat or state transition.
+        completed_at: When the task finished.
+        task_length: Length of the task description.
+        task_preview: Truncated preview of the task.
+        model: Model identifier.
+        workspace_path: Absolute path to the session workspace.
+        workspace_state: Workspace status ("created" or "reused").
+        duration_ms: Total execution time.
+        result_length: Length of the generated result.
+        error_type: Type of error if failed.
+        error_message: Detailed error message if failed.
+    """
 
     request_id: str
     session_id: str
@@ -46,7 +80,19 @@ class TaskRuntimeRecord(BaseModel):
 
 
 class SessionRuntimeRecord(BaseModel):
-    """Aggregated monitoring data for one logical session workspace."""
+    """Aggregated monitoring data for one logical session workspace.
+
+    Attributes:
+        session_id: The session identifier.
+        username: The primary user of this session.
+        email: User email.
+        workspace_path: Path to the workspace on disk.
+        created_at: When the session was first seen.
+        last_activity_at: When the last task was started or completed.
+        active_task_count: Number of currently running tasks in this session.
+        last_request_id: ID of the most recent request.
+        status: Session status ("active" or "idle").
+    """
 
     session_id: str
     username: str
@@ -60,7 +106,19 @@ class SessionRuntimeRecord(BaseModel):
 
 
 class MonitoringSnapshot(BaseModel):
-    """Current runtime snapshot for the admin monitoring UI."""
+    """Current runtime snapshot for the admin monitoring UI.
+
+    Attributes:
+        generated_at: UTC timestamp of the snapshot.
+        status: Global monitoring status ("up" or "disabled").
+        active_task_count: Total number of running tasks across all sessions.
+        session_count: Total number of tracked sessions.
+        history_size: Configured memory retention limit.
+        active_tasks: List of currently running tasks.
+        recent_tasks: List of recently completed tasks.
+        sessions: List of tracked sessions.
+        recent_events: Tail of the event log.
+    """
 
     generated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     status: str

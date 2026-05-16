@@ -62,5 +62,19 @@ async def execute_task(
     request_id: str = Depends(get_request_id),
     principal: UserPrincipal = Depends(require_task_execution_principal),
 ) -> TaskExecutionResponse:
-    """Execute a single task request using the service layer."""
+    """Executes a single task request using the service layer.
+
+    This endpoint is the main entry point for triggering Codex tasks. It
+    validates the request, ensures the user has sufficient permissions,
+    and delegates the actual execution to the `CodexExecutionService`.
+
+    Args:
+        request: The task execution request containing the prompt and parameters.
+        service: The Codex execution service (injected dependency).
+        request_id: The unique correlation ID for this request.
+        principal: The authenticated user principal.
+
+    Returns:
+        A `TaskExecutionResponse` containing the output and metadata.
+    """
     return service.execute_task(request, request_id=request_id, principal=principal)

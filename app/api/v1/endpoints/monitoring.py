@@ -26,7 +26,18 @@ async def read_monitoring_snapshot(
     _: UserPrincipal = Depends(require_admin_principal),
     monitoring_service: MonitoringService = Depends(get_monitoring_service),
 ) -> MonitoringSnapshot:
-    """Return the current monitoring state snapshot for administrators."""
+    """Returns the current monitoring state snapshot for administrators.
+
+    This endpoint requires administrative privileges and provides a
+    comprehensive view of active tasks, recent history, and system status.
+
+    Args:
+        _: The authenticated admin principal (ignored).
+        monitoring_service: The monitoring service instance.
+
+    Returns:
+        A `MonitoringSnapshot` containing the current state.
+    """
     return monitoring_service.snapshot()
 
 
@@ -40,7 +51,19 @@ async def stream_monitoring_events(
     monitoring_service: MonitoringService = Depends(get_monitoring_service),
     last_event_id: int = Query(default=0, ge=0),
 ) -> StreamingResponse:
-    """Expose monitoring events as a lightweight server-sent event stream."""
+    """Exposes monitoring events as a lightweight server-sent event stream.
+
+    Allows administrators to receive real-time updates on system events
+    (task start/stop, principal resolution, etc.) via SSE.
+
+    Args:
+        _: The authenticated admin principal (ignored).
+        monitoring_service: The monitoring service instance.
+        last_event_id: The ID of the last event received, used for reconnection.
+
+    Returns:
+        A `StreamingResponse` delivering the event stream.
+    """
 
     async def event_generator():
         cursor = last_event_id

@@ -1,4 +1,8 @@
-"""Versioned router assembly for v1 endpoints."""
+"""Version 1 router assembly.
+
+This module aggregates all version 1 endpoints (health, codex, monitoring)
+into a single router instance.
+"""
 
 from __future__ import annotations
 

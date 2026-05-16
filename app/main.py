@@ -21,12 +21,25 @@ LOGGER = logging.getLogger(__name__)
 
 
 def create_application(settings: AppSettings | None = None) -> FastAPI:
-    """Build the FastAPI application with shared middleware and handlers."""
+    """Builds the FastAPI application with shared middleware and handlers.
+
+    This factory function initializes the logging system, configures the
+    FastAPI app instance, attaches global middleware (CORS, Request Context),
+    registers exception handlers, and includes the versioned API routers.
+
+    Args:
+        settings: Optional application settings. If not provided, they will
+            be loaded from the environment/config file.
+
+    Returns:
+        A fully configured `FastAPI` application instance.
+    """
     settings = settings or get_settings()
     configure_logging(settings.log_level)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        """Manages the application lifecycle (startup and shutdown)."""
         LOGGER.info(
             "Starting service. environment=%s api_prefix=%s",
             settings.environment,
@@ -56,6 +69,7 @@ def create_application(settings: AppSettings | None = None) -> FastAPI:
 
     @app.middleware("http")
     async def request_context_middleware(request: Request, call_next):
+        """Middleware to manage request-scoped correlation IDs and monitoring."""
         request_id = request.headers.get("X-Request-ID", str(uuid4()))
         request.state.request_id = request_id
         token = set_request_id(request_id)
@@ -80,6 +94,7 @@ def create_application(settings: AppSettings | None = None) -> FastAPI:
 
     @app.get("/", include_in_schema=False)
     async def root() -> Response:
+        """Root health check endpoint returning 204 No Content."""
         return Response(status_code=204)
 
     app.dependency_overrides[get_settings] = lambda: settings

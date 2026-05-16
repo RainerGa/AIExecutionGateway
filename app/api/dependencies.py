@@ -17,12 +17,26 @@ _PRINCIPAL_CACHE_MISS = object()
 
 
 def get_monitoring_service(request: Request) -> MonitoringService:
-    """Expose the process-wide monitoring service."""
+    """Exposes the process-wide monitoring service.
+
+    Args:
+        request: The incoming FastAPI request.
+
+    Returns:
+        The `MonitoringService` instance stored in the application state.
+    """
     return request.app.state.monitoring_service
 
 
 def get_request_id(request: Request) -> str:
-    """Expose the active request id from request state to endpoint handlers."""
+    """Exposes the active request ID from request state to endpoint handlers.
+
+    Args:
+        request: The incoming FastAPI request.
+
+    Returns:
+        The request ID string or "-" if not bound.
+    """
     return getattr(request.state, "request_id", "-")
 
 
@@ -30,7 +44,15 @@ def get_codex_execution_service(
     request: Request,
     settings: AppSettings = Depends(get_settings),
 ) -> CodexExecutionService:
-    """Create a request-scoped Codex execution service from shared settings."""
+    """Creates a request-scoped Codex execution service from shared settings.
+
+    Args:
+        request: The incoming FastAPI request.
+        settings: The current application settings.
+
+    Returns:
+        A new instance of `CodexExecutionService`.
+    """
     return CodexExecutionService(
         settings=settings,
         monitoring_service=get_monitoring_service(request),
@@ -40,7 +62,14 @@ def get_codex_execution_service(
 def get_authentication_service(
     settings: AppSettings = Depends(get_settings),
 ) -> AuthenticationService:
-    """Create a request-scoped authentication service from shared settings."""
+    """Creates a request-scoped authentication service from shared settings.
+
+    Args:
+        settings: The current application settings.
+
+    Returns:
+        A new instance of `AuthenticationService`.
+    """
     return AuthenticationService(settings=settings)
 
 
@@ -49,7 +78,21 @@ def get_current_principal(
     auth_service: AuthenticationService = Depends(get_authentication_service),
     monitoring_service: MonitoringService = Depends(get_monitoring_service),
 ) -> UserPrincipal | None:
-    """Resolve and cache the current principal for the active request."""
+    """Resolves and caches the current principal for the active request.
+
+    This dependency performs the actual authentication logic and caches
+    the result in the request state to avoid redundant work if accessed
+    multiple times during the same request.
+
+    Args:
+        request: The incoming FastAPI request.
+        auth_service: The authentication service instance.
+        monitoring_service: The monitoring service instance.
+
+    Returns:
+        The resolved `UserPrincipal` or None if authentication is disabled
+        or failed.
+    """
     cached_principal = getattr(
         request.state, _PRINCIPAL_CACHE_KEY, _PRINCIPAL_CACHE_MISS
     )
@@ -70,7 +113,19 @@ def require_task_execution_principal(
     principal: UserPrincipal | None = Depends(get_current_principal),
     auth_service: AuthenticationService = Depends(get_authentication_service),
 ) -> UserPrincipal:
-    """Require a principal with sufficient privileges for task execution."""
+    """Requires a principal with sufficient privileges for task execution.
+
+    Args:
+        principal: The resolved principal from `get_current_principal`.
+        auth_service: The authentication service instance.
+
+    Returns:
+        The validated `UserPrincipal`.
+
+    Raises:
+        AuthenticationRequiredError: If no principal is resolved.
+        AuthorizationDeniedError: If the principal lacks 'execute' permissions.
+    """
     return auth_service.require_execute_task_access(principal)
 
 
@@ -78,5 +133,17 @@ def require_admin_principal(
     principal: UserPrincipal | None = Depends(get_current_principal),
     auth_service: AuthenticationService = Depends(get_authentication_service),
 ) -> UserPrincipal:
-    """Require a principal with admin access."""
+    """Requires a principal with administrative access.
+
+    Args:
+        principal: The resolved principal from `get_current_principal`.
+        auth_service: The authentication service instance.
+
+    Returns:
+        The validated `UserPrincipal`.
+
+    Raises:
+        AuthenticationRequiredError: If no principal is resolved.
+        AuthorizationDeniedError: If the principal lacks 'admin' permissions.
+    """
     return auth_service.require_admin_access(principal)

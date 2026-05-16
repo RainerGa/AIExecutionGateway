@@ -32,13 +32,29 @@ def _build_jwk_client(jwks_url: str):
 
 
 class AuthenticationService:
-    """Resolve the current caller identity and enforce access control."""
+    """Resolves caller identity and enforces profile-driven access control.
+
+    This service supports multiple authentication modes (OIDC, Trusted Headers,
+    or disabled for local development) and maps external identity information
+    into application-level `UserPrincipal` objects.
+    """
 
     def __init__(self, settings: AppSettings) -> None:
         self.settings = settings
 
     def resolve_principal(self, request: Request) -> UserPrincipal | None:
-        """Resolve the caller identity for the current request and auth mode."""
+        """Resolves the caller identity for the current request.
+
+        Args:
+            request: The incoming FastAPI request.
+
+        Returns:
+            The resolved `UserPrincipal` or None if no authentication material
+            was found (and auth is not disabled).
+
+        Raises:
+            ConfigurationError: If an unsupported authentication mode is configured.
+        """
         auth_mode = self.settings.auth.mode
 
         if auth_mode == "disabled":
@@ -54,7 +70,20 @@ class AuthenticationService:
         self,
         principal: UserPrincipal | None,
     ) -> UserPrincipal:
-        """Enforce authentication and authorization for task execution endpoints."""
+        """Enforces authentication and authorization for task execution.
+
+        Args:
+            principal: The principal resolved from the request.
+
+        Returns:
+            The validated `UserPrincipal`.
+
+        Raises:
+            AuthenticationRequiredError: If the principal is missing and
+                authentication is required.
+            AuthorizationDeniedError: If the user lacks the required roles
+                as defined in the authorization settings.
+        """
         if self.settings.auth.mode == "disabled":
             return principal or self._build_disabled_principal()
 
@@ -80,7 +109,18 @@ class AuthenticationService:
         self,
         principal: UserPrincipal | None,
     ) -> UserPrincipal:
-        """Require an authenticated principal with the admin role."""
+        """Requires an authenticated principal with administrative privileges.
+
+        Args:
+            principal: The principal resolved from the request.
+
+        Returns:
+            The validated `UserPrincipal`.
+
+        Raises:
+            AuthenticationRequiredError: If the principal is missing.
+            AuthorizationDeniedError: If the user does not have the 'admin' role.
+        """
         if self.settings.auth.mode == "disabled":
             return principal or self._build_disabled_principal()
 
@@ -98,7 +138,14 @@ class AuthenticationService:
         return principal
 
     def readiness_components(self) -> list[HealthComponent]:
-        """Return health components describing the configured auth subsystem."""
+        """Returns health components describing the configured auth subsystem.
+
+        This is used for readiness probes to ensure the authentication
+        stack is correctly initialized and configured.
+
+        Returns:
+            A list of `HealthComponent` objects indicating the status.
+        """
         if self.settings.auth.mode == "disabled":
             return [
                 HealthComponent(
@@ -147,7 +194,13 @@ class AuthenticationService:
         ]
 
     def _build_disabled_principal(self) -> UserPrincipal:
-        """Provide a deterministic local-development principal when auth is disabled."""
+        """Provides a deterministic principal for local development.
+
+        Used only when `auth.mode` is set to "disabled".
+
+        Returns:
+            A `UserPrincipal` with administrative roles.
+        """
         return UserPrincipal(
             subject="local-development",
             username="local-development",
@@ -158,7 +211,17 @@ class AuthenticationService:
     def _authenticate_via_trusted_headers(
         self, request: Request
     ) -> UserPrincipal | None:
-        """Resolve identity information from trusted reverse-proxy headers."""
+        """Resolves identity information from trusted reverse-proxy headers.
+
+        Args:
+            request: The incoming FastAPI request.
+
+        Returns:
+            The resolved `UserPrincipal` or None if the identity header is missing.
+
+        Raises:
+            AuthenticationFailedError: If headers are received from an untrusted origin.
+        """
         header_settings = self.settings.auth.trusted_header
         subject = (request.headers.get(header_settings.user_header) or "").strip()
         if not subject:
@@ -190,7 +253,15 @@ class AuthenticationService:
         )
 
     def _authenticate_via_oidc_jwt(self, request: Request) -> UserPrincipal | None:
-        """Resolve identity from an incoming bearer token using OIDC metadata."""
+        """Resolves identity from an incoming bearer token using OIDC metadata.
+
+        Args:
+            request: The incoming FastAPI request.
+
+        Returns:
+            The resolved `UserPrincipal` or None if no Authorization header
+            was provided.
+        """
         token = self._extract_bearer_token(request.headers.get("Authorization"))
         if token is None:
             return None
@@ -229,7 +300,19 @@ class AuthenticationService:
         )
 
     def _decode_oidc_token(self, token: str) -> dict[str, Any]:
-        """Validate and decode a bearer token using the configured OIDC metadata."""
+        """Validates and decodes a bearer token using OIDC metadata.
+
+        Args:
+            token: The raw JWT string.
+
+        Returns:
+            A dictionary of decoded claims.
+
+        Raises:
+            AuthenticationFailedError: If the token is invalid, expired,
+                or has invalid signatures.
+            ConfigurationError: If OIDC settings are missing or incorrect.
+        """
         self._require_oidc_dependencies()
         missing_settings = self._oidc_missing_settings()
         if missing_settings:
@@ -267,7 +350,14 @@ class AuthenticationService:
             ) from exc
 
     def _request_origin_is_trusted(self, request: Request) -> bool:
-        """Check whether trusted-auth headers are allowed from the request source."""
+        """Checks whether trusted-auth headers are allowed from the request source.
+
+        Args:
+            request: The incoming FastAPI request.
+
+        Returns:
+            True if the origin is trusted or no proxy restrictions are configured.
+        """
         trusted_proxy_ips = self.settings.auth.trusted_header.trusted_proxy_ips
         if not trusted_proxy_ips:
             return True
@@ -276,7 +366,14 @@ class AuthenticationService:
         return bool(client and client.host in trusted_proxy_ips)
 
     def _map_group_roles(self, groups: tuple[str, ...]) -> tuple[str, ...]:
-        """Translate directory groups into application roles using config mappings."""
+        """Translates directory groups into application roles using config mappings.
+
+        Args:
+            groups: A tuple of group names.
+
+        Returns:
+            A tuple of mapped application roles.
+        """
         authorization_settings = self.settings.auth.authorization
         roles: set[str] = set()
         group_set = set(groups)
@@ -299,7 +396,18 @@ class AuthenticationService:
         return tuple(sorted({*explicit_roles, *mapped_roles}))
 
     def _extract_bearer_token(self, authorization_header: str | None) -> str | None:
-        """Extract a bearer token from the Authorization header when present."""
+        """Extracts a bearer token from the Authorization header.
+
+        Args:
+            authorization_header: The raw Authorization header value.
+
+        Returns:
+            The extracted token string or None if the header is missing.
+
+        Raises:
+            AuthenticationFailedError: If the header is malformed or
+                uses an unsupported scheme.
+        """
         if not authorization_header:
             return None
 
