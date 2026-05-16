@@ -15,6 +15,7 @@ from app.api.router import build_api_router
 from app.core.config import AppSettings, get_settings
 from app.core.logging import configure_logging
 from app.core.request_context import reset_request_id, set_request_id
+from app.services.monitoring_service import MonitoringService
 
 LOGGER = logging.getLogger(__name__)
 
@@ -43,6 +44,7 @@ def create_application(settings: AppSettings | None = None) -> FastAPI:
         openapi_url=settings.openapi_url,
         lifespan=lifespan,
     )
+    app.state.monitoring_service = MonitoringService(settings.monitoring)
 
     app.add_middleware(
         CORSMiddleware,
@@ -58,6 +60,12 @@ def create_application(settings: AppSettings | None = None) -> FastAPI:
         request.state.request_id = request_id
         token = set_request_id(request_id)
         start = perf_counter()
+        app.state.monitoring_service.record_request_started(
+            request_id=request_id,
+            method=request.method,
+            path=request.url.path,
+            client_host=request.client.host if request.client else None,
+        )
 
         try:
             response = await call_next(request)
@@ -65,7 +73,9 @@ def create_application(settings: AppSettings | None = None) -> FastAPI:
             reset_request_id(token)
 
         response.headers["X-Request-ID"] = request_id
-        response.headers["X-Process-Time-Ms"] = str(int((perf_counter() - start) * 1000))
+        response.headers["X-Process-Time-Ms"] = str(
+            int((perf_counter() - start) * 1000)
+        )
         return response
 
     @app.get("/", include_in_schema=False)

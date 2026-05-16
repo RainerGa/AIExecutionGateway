@@ -6,11 +6,12 @@ import os
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
 try:
     import tomllib
 except ModuleNotFoundError:  # pragma: no cover - Python < 3.11 fallback
-    import tomli as tomllib
+    import tomli as tomllib  # type: ignore[no-redef]
 
 from app import __version__
 
@@ -36,7 +37,9 @@ def _parse_csv(value: str | None) -> tuple[str, ...]:
     return tuple(item for item in items if item)
 
 
-def _to_string_tuple(value: object, *, fallback: tuple[str, ...] = ()) -> tuple[str, ...]:
+def _to_string_tuple(
+    value: object, *, fallback: tuple[str, ...] = ()
+) -> tuple[str, ...]:
     """Normalize strings or lists of strings into an immutable tuple representation."""
     if value is None:
         return fallback
@@ -70,7 +73,7 @@ def _parse_bool(value: object, *, default: bool) -> bool:
     return default
 
 
-def _deep_merge(base: dict[str, object], override: dict[str, object]) -> dict[str, object]:
+def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
     """Merge nested dictionaries while replacing scalar and list values."""
     merged = dict(base)
     for key, value in override.items():
@@ -141,6 +144,16 @@ class AuditSettings:
 
 
 @dataclass(frozen=True, slots=True)
+class MonitoringSettings:
+    """Runtime controls for the live monitoring subsystem."""
+
+    enabled: bool
+    history_size: int
+    stream_enabled: bool
+    refresh_interval_ms: int
+
+
+@dataclass(frozen=True, slots=True)
 class AppSettings:
     """Immutable runtime configuration for the REST API service."""
 
@@ -162,9 +175,10 @@ class AppSettings:
     codex_sessions_base_path: str | None
     auth: AuthSettings
     audit: AuditSettings
+    monitoring: MonitoringSettings
 
 
-def _default_config_document() -> dict[str, object]:
+def _default_config_document() -> dict[str, Any]:
     """Provide in-code defaults that are safe for local development."""
     return {
         "active_profile": "home",
@@ -198,6 +212,12 @@ def _default_config_document() -> dict[str, object]:
             },
             "audit": {
                 "enabled": False,
+            },
+            "monitoring": {
+                "enabled": True,
+                "history_size": 100,
+                "stream_enabled": True,
+                "refresh_interval_ms": 1000,
             },
             "oidc": {
                 "issuer": None,
@@ -238,23 +258,26 @@ def _resolve_config_file_path() -> Path:
     return path
 
 
-def _load_config_document(path: Path) -> dict[str, object]:
+def _load_config_document(path: Path) -> dict[str, Any]:
     """Load the TOML document when present, or return an empty structure."""
     if not path.exists():
         if os.getenv("APP_CONFIG_FILE"):
-            raise FileNotFoundError(f"Configured APP_CONFIG_FILE does not exist: {path}")
+            raise FileNotFoundError(
+                f"Configured APP_CONFIG_FILE does not exist: {path}"
+            )
         return {}
 
     with path.open("rb") as file_handle:
         return tomllib.load(file_handle)
 
 
-def _apply_env_overrides(config: dict[str, object]) -> dict[str, object]:
+def _apply_env_overrides(config: dict[str, Any]) -> dict[str, Any]:
     """Apply environment-based overrides after profile resolution."""
     overridden = dict(config)
     auth_block = dict(overridden.get("auth", {}))
     authorization_block = dict(overridden.get("authorization", {}))
     audit_block = dict(overridden.get("audit", {}))
+    monitoring_block = dict(overridden.get("monitoring", {}))
     oidc_block = dict(overridden.get("oidc", {}))
     trusted_header_block = dict(overridden.get("trusted_header", {}))
 
@@ -267,7 +290,9 @@ def _apply_env_overrides(config: dict[str, object]) -> dict[str, object]:
     if os.getenv("LOG_LEVEL"):
         overridden["log_level"] = os.getenv("LOG_LEVEL")
     if os.getenv("CORS_ALLOWED_ORIGINS"):
-        overridden["cors_allowed_origins"] = _parse_csv(os.getenv("CORS_ALLOWED_ORIGINS"))
+        overridden["cors_allowed_origins"] = _parse_csv(
+            os.getenv("CORS_ALLOWED_ORIGINS")
+        )
     if os.getenv("CODEX_BIN"):
         overridden["codex_bin"] = os.getenv("CODEX_BIN")
     if os.getenv("CODEX_MODEL"):
@@ -282,6 +307,16 @@ def _apply_env_overrides(config: dict[str, object]) -> dict[str, object]:
         authorization_block["enabled"] = os.getenv("AUTHORIZATION_ENABLED")
     if os.getenv("AUDIT_ENABLED"):
         audit_block["enabled"] = os.getenv("AUDIT_ENABLED")
+    if os.getenv("MONITORING_ENABLED"):
+        monitoring_block["enabled"] = os.getenv("MONITORING_ENABLED")
+    if os.getenv("MONITORING_HISTORY_SIZE"):
+        monitoring_block["history_size"] = os.getenv("MONITORING_HISTORY_SIZE")
+    if os.getenv("MONITORING_STREAM_ENABLED"):
+        monitoring_block["stream_enabled"] = os.getenv("MONITORING_STREAM_ENABLED")
+    if os.getenv("MONITORING_REFRESH_INTERVAL_MS"):
+        monitoring_block["refresh_interval_ms"] = os.getenv(
+            "MONITORING_REFRESH_INTERVAL_MS"
+        )
     if os.getenv("OIDC_ISSUER"):
         oidc_block["issuer"] = os.getenv("OIDC_ISSUER")
     if os.getenv("OIDC_AUDIENCE"):
@@ -293,21 +328,26 @@ def _apply_env_overrides(config: dict[str, object]) -> dict[str, object]:
     if os.getenv("TRUSTED_HEADER_EMAIL_HEADER"):
         trusted_header_block["email_header"] = os.getenv("TRUSTED_HEADER_EMAIL_HEADER")
     if os.getenv("TRUSTED_HEADER_GROUPS_HEADER"):
-        trusted_header_block["groups_header"] = os.getenv("TRUSTED_HEADER_GROUPS_HEADER")
+        trusted_header_block["groups_header"] = os.getenv(
+            "TRUSTED_HEADER_GROUPS_HEADER"
+        )
     if os.getenv("TRUSTED_HEADER_ROLES_HEADER"):
         trusted_header_block["roles_header"] = os.getenv("TRUSTED_HEADER_ROLES_HEADER")
     if os.getenv("TRUSTED_PROXY_IPS"):
-        trusted_header_block["trusted_proxy_ips"] = _parse_csv(os.getenv("TRUSTED_PROXY_IPS"))
+        trusted_header_block["trusted_proxy_ips"] = _parse_csv(
+            os.getenv("TRUSTED_PROXY_IPS")
+        )
 
     overridden["auth"] = auth_block
     overridden["authorization"] = authorization_block
     overridden["audit"] = audit_block
+    overridden["monitoring"] = monitoring_block
     overridden["oidc"] = oidc_block
     overridden["trusted_header"] = trusted_header_block
     return overridden
 
 
-def _resolve_profile_document() -> tuple[Path, str, dict[str, object]]:
+def _resolve_profile_document() -> tuple[Path, str, dict[str, Any]]:
     """Resolve the active profile and return its merged configuration."""
     config_path = _resolve_config_file_path()
     default_document = _default_config_document()
@@ -317,9 +357,8 @@ def _resolve_profile_document() -> tuple[Path, str, dict[str, object]]:
         default_document["defaults"],
         loaded_document.get("defaults", {}),
     )
-    active_profile = (
-        (os.getenv("APP_ACTIVE_PROFILE") or "").strip()
-        or str(loaded_document.get("active_profile") or default_document["active_profile"])
+    active_profile = (os.getenv("APP_ACTIVE_PROFILE") or "").strip() or str(
+        loaded_document.get("active_profile") or default_document["active_profile"]
     )
     profile_block = loaded_document.get("profiles", {}).get(active_profile, {})
     merged = _deep_merge(defaults_block, profile_block)
@@ -333,14 +372,16 @@ _PRODUCTION_ENVIRONMENTS = {"production", "prod"}
 def _build_settings(
     config_path: Path,
     active_profile: str,
-    config: dict[str, object],
+    config: dict[str, Any],
 ) -> AppSettings:
     """Convert a merged config document into a typed settings object."""
     auth_mode = str(config.get("auth", {}).get("mode", "disabled")).strip().lower()
     if auth_mode not in AUTH_MODES:
         raise ValueError(f"Unsupported auth mode configured: {auth_mode}")
 
-    environment = str(config.get("environment", "development")).strip().lower() or "development"
+    environment = (
+        str(config.get("environment", "development")).strip().lower() or "development"
+    )
     if auth_mode == "disabled" and environment in _PRODUCTION_ENVIRONMENTS:
         raise ValueError(
             f"Authentication mode 'disabled' is not permitted in a production environment "
@@ -351,6 +392,7 @@ def _build_settings(
     enable_docs = _parse_bool(config.get("enable_docs"), default=True)
     authorization_config = config.get("authorization", {})
     audit_config = config.get("audit", {})
+    monitoring_config = config.get("monitoring", {})
     oidc_config = config.get("oidc", {})
     trusted_header_config = config.get("trusted_header", {})
 
@@ -366,13 +408,25 @@ def _build_settings(
     )
 
     oidc_settings = OidcSettings(
-        issuer=(str(oidc_config.get("issuer")).strip() if oidc_config.get("issuer") else None),
-        audience=(
-            str(oidc_config.get("audience")).strip() if oidc_config.get("audience") else None
+        issuer=(
+            str(oidc_config.get("issuer")).strip()
+            if oidc_config.get("issuer")
+            else None
         ),
-        jwks_url=(str(oidc_config.get("jwks_url")).strip() if oidc_config.get("jwks_url") else None),
+        audience=(
+            str(oidc_config.get("audience")).strip()
+            if oidc_config.get("audience")
+            else None
+        ),
+        jwks_url=(
+            str(oidc_config.get("jwks_url")).strip()
+            if oidc_config.get("jwks_url")
+            else None
+        ),
         algorithms=_to_string_tuple(oidc_config.get("algorithms"), fallback=("RS256",)),
-        required_claims=_to_string_tuple(oidc_config.get("required_claims"), fallback=("sub",)),
+        required_claims=_to_string_tuple(
+            oidc_config.get("required_claims"), fallback=("sub",)
+        ),
         subject_claim=str(oidc_config.get("subject_claim", "sub")).strip() or "sub",
         username_claim=(
             str(oidc_config.get("username_claim", "preferred_username")).strip()
@@ -387,25 +441,35 @@ def _build_settings(
 
     trusted_header_settings = TrustedHeaderSettings(
         user_header=(
-            str(trusted_header_config.get("user_header", "X-Authenticated-User")).strip()
+            str(
+                trusted_header_config.get("user_header", "X-Authenticated-User")
+            ).strip()
             or "X-Authenticated-User"
         ),
         email_header=(
-            str(trusted_header_config.get("email_header", "X-Authenticated-Email")).strip()
+            str(
+                trusted_header_config.get("email_header", "X-Authenticated-Email")
+            ).strip()
             or "X-Authenticated-Email"
         ),
         groups_header=(
-            str(trusted_header_config.get("groups_header", "X-Authenticated-Groups")).strip()
+            str(
+                trusted_header_config.get("groups_header", "X-Authenticated-Groups")
+            ).strip()
             or "X-Authenticated-Groups"
         ),
         roles_header=(
-            str(trusted_header_config.get("roles_header", "X-Authenticated-Roles")).strip()
+            str(
+                trusted_header_config.get("roles_header", "X-Authenticated-Roles")
+            ).strip()
             or "X-Authenticated-Roles"
         ),
         group_separator=(
             str(trusted_header_config.get("group_separator", ";")).strip() or ";"
         ),
-        trusted_proxy_ips=_to_string_tuple(trusted_header_config.get("trusted_proxy_ips")),
+        trusted_proxy_ips=_to_string_tuple(
+            trusted_header_config.get("trusted_proxy_ips")
+        ),
     )
 
     return AppSettings(
@@ -432,8 +496,14 @@ def _build_settings(
             config.get("cors_allowed_origins"),
             fallback=("http://localhost", "http://127.0.0.1"),
         ),
-        codex_bin=(str(config.get("codex_bin")).strip() if config.get("codex_bin") else None),
-        codex_model=(str(config.get("codex_model")).strip() if config.get("codex_model") else None),
+        codex_bin=(
+            str(config.get("codex_bin")).strip() if config.get("codex_bin") else None
+        ),
+        codex_model=(
+            str(config.get("codex_model")).strip()
+            if config.get("codex_model")
+            else None
+        ),
         codex_project_source=(
             str(config.get("codex_project_source")).strip()
             if config.get("codex_project_source")
@@ -452,6 +522,18 @@ def _build_settings(
         ),
         audit=AuditSettings(
             enabled=_parse_bool(audit_config.get("enabled"), default=False),
+        ),
+        monitoring=MonitoringSettings(
+            enabled=_parse_bool(monitoring_config.get("enabled"), default=True),
+            history_size=max(10, int(monitoring_config.get("history_size", 100))),
+            stream_enabled=_parse_bool(
+                monitoring_config.get("stream_enabled"),
+                default=True,
+            ),
+            refresh_interval_ms=max(
+                250,
+                int(monitoring_config.get("refresh_interval_ms", 1000)),
+            ),
         ),
     )
 

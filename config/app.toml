@@ -67,6 +67,19 @@ readonly_groups = []
 # Whether to log detailed audit events for sensitive operations.
 enabled = false
 
+[defaults.monitoring]
+# Enables the live in-memory monitoring subsystem and admin snapshot API.
+enabled = true
+
+# Number of recently completed tasks kept in memory for the monitoring UI.
+history_size = 100
+
+# Enables the server-sent event stream for live terminal updates.
+stream_enabled = true
+
+# Suggested refresh cadence for terminal clients.
+refresh_interval_ms = 1000
+
 [defaults.oidc]
 # Configuration for OpenID Connect (e.g., Microsoft Entra ID, Okta, Keycloak).
 issuer = ""

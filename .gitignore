@@ -72,3 +72,7 @@ Thumbs.db
 
 # FastAPI
 *.log
+
+# Tool specific
+.agents/
+.codex/

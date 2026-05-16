@@ -20,7 +20,9 @@ def build_request(
     """Create a minimal Starlette request object for auth-service unit tests."""
     normalized_headers = []
     for key, value in (headers or {}).items():
-        normalized_headers.append((key.lower().encode("latin-1"), value.encode("latin-1")))
+        normalized_headers.append(
+            (key.lower().encode("latin-1"), value.encode("latin-1"))
+        )
 
     scope = {
         "type": "http",
@@ -153,3 +155,34 @@ def test_oidc_mode_accepts_bearer_token_when_claims_map_to_user_role():
     assert principal.subject == "charlie"
     assert principal.roles == ("user",)
     assert service.require_execute_task_access(principal).subject == "charlie"
+
+
+def test_require_admin_access_returns_local_principal_when_auth_is_disabled():
+    service = AuthenticationService(build_test_settings(auth_mode="disabled"))
+
+    principal = service.require_admin_access(None)
+
+    assert principal.subject == "local-development"
+    assert principal.roles == ("admin",)
+
+
+def test_require_admin_access_requires_authentication_when_enabled():
+    service = AuthenticationService(build_test_settings(auth_mode="trusted_header"))
+
+    with pytest.raises(AuthenticationRequiredError):
+        service.require_admin_access(None)
+
+
+def test_require_admin_access_denies_non_admin_role():
+    service = AuthenticationService(build_test_settings(auth_mode="trusted_header"))
+    principal = service.resolve_principal(
+        build_request(
+            headers={
+                "X-Authenticated-User": "alice",
+                "X-Authenticated-Roles": "user",
+            }
+        )
+    )
+
+    with pytest.raises(AuthorizationDeniedError):
+        service.require_admin_access(principal)

@@ -13,7 +13,7 @@ from app.core.config import (
     _resolve_config_file_path,
     _build_settings,
     _default_config_document,
-    _load_config_document
+    _load_config_document,
 )
 
 
@@ -45,7 +45,9 @@ user_groups = ["Codex-Users"]
     assert settings.auth.authorization.user_groups == ("Codex-Users",)
 
 
-def test_get_settings_allows_environment_to_override_profile(monkeypatch, tmp_path: Path):
+def test_get_settings_allows_environment_to_override_profile(
+    monkeypatch, tmp_path: Path
+):
     """Environment overrides should be able to switch profiles and auth mode."""
     config_file = tmp_path / "app.toml"
     config_file.write_text(
@@ -124,6 +126,10 @@ def test_apply_env_overrides(monkeypatch):
     monkeypatch.setenv("AUTH_MODE", "oidc_jwt")
     monkeypatch.setenv("AUTHORIZATION_ENABLED", "true")
     monkeypatch.setenv("AUDIT_ENABLED", "true")
+    monkeypatch.setenv("MONITORING_ENABLED", "true")
+    monkeypatch.setenv("MONITORING_HISTORY_SIZE", "250")
+    monkeypatch.setenv("MONITORING_STREAM_ENABLED", "false")
+    monkeypatch.setenv("MONITORING_REFRESH_INTERVAL_MS", "5000")
     monkeypatch.setenv("OIDC_ISSUER", "https://issuer")
     monkeypatch.setenv("OIDC_AUDIENCE", "aud")
     monkeypatch.setenv("OIDC_JWKS_URL", "https://jwks")
@@ -148,6 +154,10 @@ def test_apply_env_overrides(monkeypatch):
     assert settings.auth.mode == "oidc_jwt"
     assert settings.auth.authorization.enabled is True
     assert settings.audit.enabled is True
+    assert settings.monitoring.enabled is True
+    assert settings.monitoring.history_size == 250
+    assert settings.monitoring.stream_enabled is False
+    assert settings.monitoring.refresh_interval_ms == 5000
     assert settings.auth.oidc.issuer == "https://issuer"
     assert settings.auth.oidc.audience == "aud"
     assert settings.auth.oidc.jwks_url == "https://jwks"
@@ -165,13 +175,25 @@ def test_build_settings_invalid_auth_mode():
         _build_settings(Path("dummy"), "test", config)
 
 
+def test_default_config_document_contains_monitoring_defaults():
+    config = _default_config_document()
+
+    assert config["defaults"]["monitoring"]["enabled"] is True
+    assert config["defaults"]["monitoring"]["history_size"] == 100
+    assert config["defaults"]["monitoring"]["stream_enabled"] is True
+    assert config["defaults"]["monitoring"]["refresh_interval_ms"] == 1000
+
+
 @pytest.mark.parametrize("env_name", ["production", "prod"])
 def test_build_settings_disabled_auth_in_production_raises_error(env_name: str):
     """The system must refuse to start with disabled auth in production environments."""
     config = _default_config_document()
     config["auth"] = {"mode": "disabled"}
     config["environment"] = env_name
-    with pytest.raises(ValueError, match="Authentication mode 'disabled' is not permitted in a production environment"):
+    with pytest.raises(
+        ValueError,
+        match="Authentication mode 'disabled' is not permitted in a production environment",
+    ):
         _build_settings(Path("dummy"), "test", config)
 
 
@@ -184,3 +206,18 @@ def test_build_settings_disabled_auth_in_non_production_is_allowed(env_name: str
     settings = _build_settings(Path("dummy"), "test", config)
     assert settings.auth.mode == "disabled"
     assert settings.environment == env_name
+
+
+def test_build_settings_clamps_monitoring_limits():
+    config = _default_config_document()
+    config["monitoring"] = {
+        "enabled": True,
+        "history_size": 1,
+        "stream_enabled": True,
+        "refresh_interval_ms": 5,
+    }
+
+    settings = _build_settings(Path("dummy"), "test", config)
+
+    assert settings.monitoring.history_size == 10
+    assert settings.monitoring.refresh_interval_ms == 250

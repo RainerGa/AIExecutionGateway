@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import importlib.util
 import logging
 from functools import lru_cache
 from typing import Any
@@ -75,6 +76,27 @@ class AuthenticationService:
 
         return principal
 
+    def require_admin_access(
+        self,
+        principal: UserPrincipal | None,
+    ) -> UserPrincipal:
+        """Require an authenticated principal with the admin role."""
+        if self.settings.auth.mode == "disabled":
+            return principal or self._build_disabled_principal()
+
+        if principal is None:
+            raise AuthenticationRequiredError(
+                "Authentication is required to access monitoring endpoints.",
+                headers=self._auth_headers(),
+            )
+
+        if "admin" not in set(principal.roles):
+            raise AuthorizationDeniedError(
+                "The authenticated user is not allowed to access monitoring endpoints.",
+            )
+
+        return principal
+
     def readiness_components(self) -> list[HealthComponent]:
         """Return health components describing the configured auth subsystem."""
         if self.settings.auth.mode == "disabled":
@@ -133,7 +155,9 @@ class AuthenticationService:
             roles=("admin",),
         )
 
-    def _authenticate_via_trusted_headers(self, request: Request) -> UserPrincipal | None:
+    def _authenticate_via_trusted_headers(
+        self, request: Request
+    ) -> UserPrincipal | None:
         """Resolve identity information from trusted reverse-proxy headers."""
         header_settings = self.settings.auth.trusted_header
         subject = (request.headers.get(header_settings.user_header) or "").strip()
@@ -161,7 +185,8 @@ class AuthenticationService:
             auth_mode="trusted_header",
             roles=roles,
             groups=groups,
-            email=(request.headers.get(header_settings.email_header) or "").strip() or None,
+            email=(request.headers.get(header_settings.email_header) or "").strip()
+            or None,
         )
 
     def _authenticate_via_oidc_jwt(self, request: Request) -> UserPrincipal | None:
@@ -186,12 +211,21 @@ class AuthenticationService:
 
         return UserPrincipal(
             subject=subject,
-            username=str(claims.get(oidc_settings.username_claim) or subject).strip() or subject,
+            username=str(claims.get(oidc_settings.username_claim) or subject).strip()
+            or subject,
             auth_mode="oidc_jwt",
             roles=roles,
             groups=groups,
-            email=(str(claims.get(oidc_settings.email_claim)).strip() if claims.get(oidc_settings.email_claim) else None),
-            tenant_id=(str(claims.get(oidc_settings.tenant_claim)).strip() if claims.get(oidc_settings.tenant_claim) else None),
+            email=(
+                str(claims.get(oidc_settings.email_claim)).strip()
+                if claims.get(oidc_settings.email_claim)
+                else None
+            ),
+            tenant_id=(
+                str(claims.get(oidc_settings.tenant_claim)).strip()
+                if claims.get(oidc_settings.tenant_claim)
+                else None
+            ),
         )
 
     def _decode_oidc_token(self, token: str) -> dict[str, Any]:
@@ -210,7 +244,7 @@ class AuthenticationService:
 
         try:
             signing_key = jwk_client.get_signing_key_from_jwt(token)
-            options = {"require": list(oidc_settings.required_claims)}
+            options: dict[str, Any] = {"require": list(oidc_settings.required_claims)}
             if not oidc_settings.audience:
                 options["verify_aud"] = False
 
@@ -284,7 +318,9 @@ class AuthenticationService:
             )
         return token
 
-    def _split_values(self, raw_value: str | None, *, separator: str) -> tuple[str, ...]:
+    def _split_values(
+        self, raw_value: str | None, *, separator: str
+    ) -> tuple[str, ...]:
         """Split delimited header values into a normalized tuple."""
         if not raw_value:
             return ()

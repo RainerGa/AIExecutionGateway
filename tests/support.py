@@ -7,6 +7,7 @@ from app.core.config import (
     AuditSettings,
     AuthorizationSettings,
     AuthSettings,
+    MonitoringSettings,
     OidcSettings,
     TrustedHeaderSettings,
 )
@@ -32,6 +33,10 @@ def build_test_settings(
     oidc_issuer: str | None = "https://issuer.example.com",
     oidc_audience: str | None = "api://test",
     oidc_jwks_url: str | None = "https://issuer.example.com/jwks",
+    monitoring_enabled: bool = True,
+    monitoring_history_size: int = 100,
+    monitoring_stream_enabled: bool = True,
+    monitoring_refresh_interval_ms: int = 1000,
 ) -> AppSettings:
     """Create deterministic application settings for tests."""
     return AppSettings(
@@ -84,6 +89,12 @@ def build_test_settings(
             ),
         ),
         audit=AuditSettings(enabled=audit_enabled),
+        monitoring=MonitoringSettings(
+            enabled=monitoring_enabled,
+            history_size=monitoring_history_size,
+            stream_enabled=monitoring_stream_enabled,
+            refresh_interval_ms=monitoring_refresh_interval_ms,
+        ),
     )
 
 

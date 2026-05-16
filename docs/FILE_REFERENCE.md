@@ -1,107 +1,124 @@
-# Dateireferenz
+# File Reference
 
-Diese Referenz beschreibt jede relevante Programmdatei des Projekts, ihren Zweck, ihre Verantwortlichkeit und ihre wichtigsten technischen Details.
+This reference describes every relevant program file of the project, its purpose, its responsibility, and its most important technical details.
 
-## Laufzeiteinstieg und Betrieb
+## Runtime Entry and Operation
 
 ### `start_server.sh`
 
-Verantwortung:
-Startet die Anwendung lokal oder auf einem Server mit konsistenten Umgebungsvariablen.
+Responsibility:
+Starts the application locally or on a server with consistent environment variables.
 
-Wichtige Details:
-- aktiviert optional `venv`
-- validiert `uvicorn`
-- validiert `CODEX_BIN`
-- unterstützt `APP_CONFIG_FILE`, `APP_ACTIVE_PROFILE`, `HOST`, `PORT`, `CODEX_MODEL`, `UVICORN_RELOAD`, `UVICORN_LOG_LEVEL`
-- nutzt `exec uvicorn`, damit das gestartete Uvicorn-Prozessmodell korrekt das PID-1-Verhalten übernehmen kann
+Important details:
+- optionally activates `venv`
+- validates `uvicorn`
+- validates `CODEX_BIN`
+- supports `APP_CONFIG_FILE`, `APP_ACTIVE_PROFILE`, `HOST`, `PORT`, `CODEX_MODEL`, `UVICORN_RELOAD`, `UVICORN_LOG_LEVEL`
+- also forwards monitoring overrides such as `MONITORING_ENABLED`, `MONITORING_HISTORY_SIZE`, and `MONITORING_STREAM_ENABLED`
+- uses `exec uvicorn` so that the started Uvicorn process model can correctly adopt PID-1 behavior
+
+### `monitor_live.py`
+
+Responsibility:
+Provides a `top`-style shell TUI for administrators.
+
+Important details:
+- reads `GET /api/v1/monitoring/snapshot`
+- can additionally consume `GET /api/v1/monitoring/events` as an SSE stream
+- supports filters by user, session, status, and errors
+- intentionally avoids heavy extra UI dependencies
 
 ### `requirements.txt`
 
-Verantwortung:
-Definiert die minimalen Python-Abhängigkeiten für API, Validierung, Test und Codex-SDK.
+Responsibility:
+Defines the minimum Python dependencies for API, validation, testing, and Codex SDK.
 
 ### `config/app.toml`
 
-Verantwortung:
-Definiert die Profilkonfiguration der Anwendung für `home` und `company`.
+Responsibility:
+Defines the application's profile configuration for `home` and `company`.
 
-Wichtige Details:
-- enthält sichere Defaults
-- kapselt Auth-Modi, Rollenmapping und Audit-Flags
-- dient als Hauptschalter für Entwicklung ohne Auth und Unternehmensbetrieb mit SSO
+Important details:
+- contains safe defaults
+- encapsulates auth modes, role mapping, and audit flags
+- serves as a master switch for development without auth and enterprise operation with SSO
 
-## Anwendungspaket
+## Application Package
 
 ### `app/__init__.py`
 
-Verantwortung:
-Markiert das Verzeichnis als Python-Paket und hält die zentrale Applikationsversion.
+Responsibility:
+Marks the directory as a Python package and holds the central application version.
 
-Wichtige Symbole:
-- `__version__`: wird von `app/core/config.py` übernommen
+Important symbols:
+- `__version__`: adopted by `app/core/config.py`
 
 ### `app/main.py`
 
-Verantwortung:
-Erzeugt die FastAPI-Anwendung, registriert Middleware, CORS, Router und Exception-Handler.
+Responsibility:
+Creates the FastAPI application, registers middleware, CORS, routers, and exception handlers.
 
-Wichtige Funktionen:
-- `create_application()`: Factory für die vollständige App
-- `request_context_middleware()`: erzeugt Request-ID, misst Laufzeit und schreibt Header
-- `root()`: minimaler Root-Endpunkt ohne OpenAPI-Schemaeintrag
+Important functions:
+- `create_application()`: factory for the complete app
+- `request_context_middleware()`: generates request ID, measures runtime, and writes headers
+- `root()`: minimal root endpoint without OpenAPI schema entry
 
-Wichtige Abhängigkeiten:
+Important dependencies:
 - `app/api/router.py`
 - `app/api/error_handlers.py`
 - `app/core/config.py`
 - `app/core/logging.py`
 - `app/core/request_context.py`
+- `app/services/monitoring_service.py`
 
-## Core-Schicht
+Important operational details:
+- keeps `MonitoringService` as a singleton in `app.state`
+- emits `request_started` events already in middleware
+
+## Core Layer
 
 ### `app/core/__init__.py`
 
-Verantwortung:
-Paketmarker und semantische Gruppierung der Core-Bausteine.
+Responsibility:
+Package marker and semantic grouping of core components.
 
 ### `app/core/config.py`
 
-Verantwortung:
-Liest Umgebungsvariablen zentral ein und kapselt sie in `AppSettings`.
+Responsibility:
+Reads environment variables centrally and encapsulates them in `AppSettings`.
 
-Wichtige Funktionen und Typen:
-- `_parse_csv()`: normiert CORS-Konfigurationen
-- `_resolve_profile_document()`: führt Defaults, Datei, Profil und Env-Overrides zusammen
-- `AppSettings`: unveränderliches Konfigurationsobjekt (inkl. `codex_project_source` und `codex_sessions_base_path`)
-- `AuthSettings`, `OidcSettings`, `TrustedHeaderSettings`, `AuthorizationSettings`, `AuditSettings`
-- `get_settings()`: gecachter Zugriff auf die Prozesskonfiguration
+Important functions and types:
+- `_parse_csv()`: normalizes CORS configurations
+- `_resolve_profile_document()`: merges defaults, file, profile, and env overrides
+- `AppSettings`: immutable configuration object (incl. `codex_project_source` and `codex_sessions_base_path`)
+- `AuthSettings`, `OidcSettings`, `TrustedHeaderSettings`, `AuthorizationSettings`, `AuditSettings`, `MonitoringSettings`
+- `get_settings()`: cached access to the process configuration
 
 ### `app/core/request_context.py`
 
-Verantwortung:
-Stellt Request-Kontext für Logging und Korrelation über `contextvars` bereit.
+Responsibility:
+Provides request context for logging and correlation via `contextvars`.
 
-Wichtige Funktionen:
+Important functions:
 - `get_request_id()`
 - `set_request_id()`
 - `reset_request_id()`
 
 ### `app/core/logging.py`
 
-Verantwortung:
-Initialisiert das Prozess-Logging und ergänzt jeden Logeintrag um `request_id`.
+Responsibility:
+Initializes process logging and supplements every log entry with `request_id`.
 
-Wichtige Elemente:
+Important elements:
 - `RequestContextFilter`
 - `configure_logging()`
 
 ### `app/core/exceptions.py`
 
-Verantwortung:
-Definiert stabile Domänenfehler, die von Services ausgelöst und von der API in HTTP-Responses umgewandelt werden.
+Responsibility:
+Defines stable domain errors triggered by services and converted by the API into HTTP responses.
 
-Wichtige Klassen:
+Important classes:
 - `ApplicationError`
 - `InvalidTaskRequestError`
 - `CodexRuntimeBusyError`
@@ -111,68 +128,71 @@ Wichtige Klassen:
 - `AuthenticationFailedError`
 - `AuthorizationDeniedError`
 
-## Security-Schicht
+## Security Layer
 
 ### `app/security/__init__.py`
 
-Verantwortung:
-Paketmarker für Authentifizierung und Autorisierung.
+Responsibility:
+Package marker for authentication and authorization.
 
 ### `app/security/models.py`
 
-Verantwortung:
-Definiert den Benutzerkontext für eine einzelne Anfrage.
+Responsibility:
+Defines the user context for a single request.
 
-Wichtige Klassen:
+Important classes:
 - `UserPrincipal`
 
 ### `app/security/authentication.py`
 
-Verantwortung:
-Implementiert die konfigurierbaren Auth-Modi und die rollenbasierte Freigabe für Task-Ausführung.
+Responsibility:
+Implements configurable auth modes and role-based release for task execution.
 
-Wichtige Funktionen und Klassen:
+Important functions and classes:
 - `AuthenticationService`
 - `resolve_principal()`
 - `require_execute_task_access()`
+- `require_admin_access()`
 - `readiness_components()`
 
-Wichtige Betriebsdetails:
-- unterstützt `disabled`, `trusted_header`, `oidc_jwt`
-- mappt Gruppen zu Rollen
-- validiert OIDC-Abhängigkeiten und Readiness
-- liefert Grundlagen für Audit- und Actor-Kontext
+Important operational details:
+- supports `disabled`, `trusted_header`, `oidc_jwt`
+- maps groups to roles
+- validates OIDC dependencies and readiness
+- provides basis for audit and actor context
 
-## API-Schicht
+## API Layer
 
 ### `app/api/__init__.py`
 
-Verantwortung:
-Paketmarker für die HTTP-Schicht.
+Responsibility:
+Package marker for the HTTP layer.
 
 ### `app/api/router.py`
 
-Verantwortung:
-Aggregiert alle API-Versionen und bindet sie unter dem konfigurierten Prefix ein.
+Responsibility:
+Aggregates all API versions and integrates them under the configured prefix.
 
 ### `app/api/dependencies.py`
 
-Verantwortung:
-Kapselt FastAPI-Dependencies für Settings, Services und Request-Kontext.
+Responsibility:
+Encapsulates FastAPI dependencies for settings, services, and request context.
 
-Wichtige Funktionen:
+Important functions:
 - `get_request_id()`
+- `get_monitoring_service()`
 - `get_codex_execution_service()`
 - `get_authentication_service()`
 - `get_current_principal()`
 - `require_task_execution_principal()`
+- `require_admin_principal()`
 
 ### `app/api/error_handlers.py`
 
-Verantwortung:
-Registriert globale Fehlerbehandlung und sorgt für ein stabiles Fehlerformat.
+Responsibility:
+Registers global error handling and ensures a stable error format.
 
-Wichtige Funktionen:
+Important functions:
 - `handle_application_error()`
 - `handle_validation_error()`
 - `handle_unexpected_error()`
@@ -182,179 +202,248 @@ Wichtige Funktionen:
 
 ### `app/api/v1/__init__.py`
 
-Verantwortung:
-Paketmarker für Version 1 der öffentlichen API.
+Responsibility:
+Package marker for version 1 of the public API.
 
 ### `app/api/v1/router.py`
 
-Verantwortung:
-Setzt die Endpunktgruppen von Version 1 aus Fach- und Betriebsrouten zusammen.
+Responsibility:
+Assembles the endpoint groups of version 1 from functional and operational routes.
 
 ### `app/api/v1/endpoints/__init__.py`
 
-Verantwortung:
-Paketmarker für Endpunkte der API-Version 1.
+Responsibility:
+Package marker for endpoints of API version 1.
 
 ### `app/api/v1/endpoints/codex.py`
 
-Verantwortung:
-Definiert den fachlichen Task-Endpunkt der API.
+Responsibility:
+Defines the functional task endpoint of the API.
 
-Wichtige Details:
-- nutzt Dependency Injection für Service und Request-ID
-- schützt den Task-Endpunkt über die Security-Dependency
-- beschreibt OpenAPI-Responses für Fehlerfälle
-- enthält keine Geschäftslogik mehr
+Important details:
+- uses dependency injection for service and request ID
+- protects the task endpoint via the security dependency
+- describes OpenAPI responses for error cases
+- contains no business logic anymore
 
-Wichtige Funktion:
+Important function:
 - `execute_task()`
 
 ### `app/api/v1/endpoints/health.py`
 
-Verantwortung:
-Definiert Liveness- und Readiness-Endpunkte für Monitoring, Orchestrierung und Load-Balancer.
+Responsibility:
+Defines liveness and readiness endpoints for monitoring, orchestration, and load balancers.
 
-Wichtige Funktionen:
+Important functions:
 - `read_liveness()`
 - `read_readiness()`
 
-## Schema-Schicht
+### `app/api/v1/endpoints/monitoring.py`
+
+Responsibility:
+Defines the admin endpoints for live snapshots and SSE runtime events.
+
+Important functions:
+- `read_monitoring_snapshot()`
+- `stream_monitoring_events()`
+
+Important details:
+- uses `require_admin_principal()`
+- returns `MonitoringSnapshot` or `text/event-stream`
+
+## Schema Layer
 
 ### `app/schemas/__init__.py`
 
-Verantwortung:
-Paketmarker für wiederverwendbare API- und Service-Verträge.
+Responsibility:
+Package marker for reusable API and service contracts.
 
 ### `app/schemas/codex.py`
 
-Verantwortung:
-Beschreibt Request, Response und Metadaten für Task-Ausführungen.
+Responsibility:
+Describes request, response, and metadata for task executions.
 
-Wichtige Klassen:
+Important classes:
 - `TaskExecutionRequest`
 - `TaskExecutionMetadata`
 - `TaskExecutionResponse`
 
-Wichtige Validierung:
-- trimmt Leerraum
-- verhindert leere oder reine Whitespace-Tasks
-- begrenzt die maximale Request-Länge
+Important validation:
+- trims whitespace
+- prevents empty or pure whitespace tasks
+- limits maximum request length
 
 ### `app/schemas/errors.py`
 
-Verantwortung:
-Definiert das standardisierte Fehlerformat.
+Responsibility:
+Defines the standardized error format.
 
-Wichtige Klassen:
+Important classes:
 - `ErrorDetail`
 - `ErrorResponse`
 
 ### `app/schemas/health.py`
 
-Verantwortung:
-Definiert Health-Verträge für Betriebsendpunkte.
+Responsibility:
+Defines health contracts for operational endpoints.
 
-Wichtige Klassen:
+Important classes:
 - `HealthComponent`
 - `HealthResponse`
 
-## Service-Schicht
+### `app/schemas/monitoring.py`
+
+Responsibility:
+Describes contracts for live monitoring, session views, events, and snapshots.
+
+Important classes:
+- `MonitoringEvent`
+- `TaskRuntimeRecord`
+- `SessionRuntimeRecord`
+- `MonitoringSnapshot`
+
+## Service Layer
+
+### `app/services/monitoring_service.py`
+
+Responsibility:
+Keeps the process-wide in-memory state for active monitoring.
+
+Important functions:
+- `record_request_started()`
+- `record_principal_resolved()`
+- `record_task_started()`
+- `record_workspace_event()`
+- `record_task_completed()`
+- `record_task_failed()`
+- `snapshot()`
+- `events_after()`
+
+Important details:
+- protects state with a lock
+- manages active tasks, sessions, event history, and short history
+- is intentionally non-persistent and not cluster-aggregated
 
 ### `app/services/__init__.py`
 
-Verantwortung:
-Paketmarker für fachliche Services.
+Responsibility:
+Package marker for functional services.
 
 ### `app/services/codex_service.py`
 
-Verantwortung:
-Kapselt die gesamte Integration mit Codex inklusive Fehlerübersetzung und Health-Prüfung.
+Responsibility:
+Encapsulates the entire integration with Codex including error translation and health check.
 
-Wichtige Funktionen und Klassen:
+Important functions and classes:
 - `CodexExecutionService`
 - `execute_task()`
 - `readiness_components()`
 - `_build_app_server_config()`
 - `_build_thread_start_kwargs()`
 
-Wichtige Betriebsdetails:
-- startet pro Request eine frische Codex-Session
-- verwaltet dynamische Arbeitsverzeichnisse (`codex_sessions_base_path`), isoliert pro Session-ID
-- kopiert optional ein Vorlagenprojekt (`codex_project_source`) in die neue Session
-- misst Ausführungsdauer
-- protokolliert Task-Größe statt Inhalt
-- protokolliert Actor- und Audit-Kontext
-- übersetzt SDK-Fehler in Domänenfehler
+Important operational details:
+- starts a fresh Codex session per request
+- manages dynamic workspaces (`codex_sessions_base_path`), isolated per session ID
+- optionally copies a template project (`codex_project_source`) into the new session
+- measures execution duration
+- logs task size instead of content
+- logs actor and audit context
+- translates SDK errors into domain errors
 
 ## Tests
 
 ### `tests/conftest.py`
 
-Verantwortung:
-Stellt sicher, dass das lokale Paket beim Testlauf importierbar ist.
+Responsibility:
+Ensures that the local package is importable during the test run.
 
-Wichtige Details:
-- leert den Settings-Cache automatisch pro Testfall
+Important details:
+- clears the settings cache automatically per test case
 
 ### `tests/test_codex.py`
 
-Verantwortung:
-Prüft die API-Endpunktdelegation auf Handler-Ebene.
+Responsibility:
+Checks the API endpoint delegation at the handler level.
 
-Wichtige Tests:
-- Endpoint-Aufruf delegiert korrekt an den injizierten Service
+Important tests:
+- endpoint call delegates correctly to the injected service
 
 ### `tests/test_codex_service.py`
 
-Verantwortung:
-Prüft die Kernlogik des Service-Layers.
+Responsibility:
+Checks the core logic of the service layer.
 
-Wichtige Testfälle:
-- erfolgreicher Task-Lauf
-- Verhalten ohne Modell-Override
-- Übersetzung von JSON-RPC-Fehlern
-- Übersetzung von Busy-Fehlern
-- Übersetzung unerwarteter Fehler
+Important test cases:
+- successful task run
+- behavior without model override
+- translation of JSON-RPC errors
+- translation of busy errors
+- translation of unexpected errors
+
+### `tests/test_monitoring_service.py`
+
+Responsibility:
+Tests the live runtime state, event history, and failure handling of the monitoring subsystem.
+
+### `tests/test_monitoring_api.py`
+
+Responsibility:
+Tests direct admin snapshot/SSE endpoint behavior and monitoring-specific helpers.
+
+### `tests/test_monitor_live.py`
+
+Responsibility:
+Tests the shell TUI helper functions such as filters, header building, SSE parsing, and stream error handling.
+
+### `tests/test_dependencies.py`
+
+Responsibility:
+Tests FastAPI dependency wiring, principal caching, and monitoring injection.
+
+### `tests/test_app_factory.py`
+
+Responsibility:
+Tests application factory wiring, exported routes, and monitoring singleton creation.
 
 ### `tests/test_health.py`
 
-Verantwortung:
-Prüft die Liveness- und Readiness-Logik unabhängig vom HTTP-Transport.
+Responsibility:
+Checks the liveness and readiness logic independently of the HTTP transport.
 
 ### `tests/test_auth.py`
 
-Verantwortung:
-Prüft Auth-Modi, Gruppenmapping und rollenbasierte Zugriffskontrolle.
+Responsibility:
+Checks auth modes, group mapping, and role-based access control.
 
-Wichtige Testfälle:
-- lokaler `disabled`-Modus
-- `trusted_header` mit und ohne Benutzerheader
-- Rollenmapping aus Gruppen
-- OIDC-Pfad mit gepatchter Token-Dekodierung
+Important test cases:
+- local `disabled` mode
+- `trusted_header` with and without user header
+- role mapping from groups
+- OIDC path with patched token decoding
 
 ### `tests/test_config.py`
 
-Verantwortung:
-Prüft Profilauflösung und gezielte Umgebungsvariablen-Overrides.
+Responsibility:
+Checks profile resolution and targeted environment variable overrides.
 
 ### `tests/support.py`
 
-Verantwortung:
-Stellt wiederverwendbare Testfabriken für Settings und Principals bereit.
+Responsibility:
+Provides reusable test factories for settings and principals.
 
-## Dokumentation
+## Documentation
 
 ### `README.md`
 
-Verantwortung:
-Einführung, Betrieb, Setup und Nutzung aus Sicht von Anwendern und Integratoren.
+Responsibility:
+Introduction, operation, setup, and usage from the perspective of users and integrators.
 
 ### `docs/DEVELOPER_GUIDE.md`
 
-Verantwortung:
-Beschreibt Architektur, Schichten, Request-Flow, Erweiterungspunkte und Enterprise-Lücken.
+Responsibility:
+Describes architecture, layers, request flow, extension points, and enterprise gaps.
 
 ### `docs/FILE_REFERENCE.md`
 
-Verantwortung:
-Bietet die genaue Dateidokumentation für Wartung, Onboarding und Code-Reviews.
+Responsibility:
+Provides the exact file documentation for maintenance, onboarding, and code reviews.

@@ -26,6 +26,10 @@ CODEX_PROJECT_SOURCE="${CODEX_PROJECT_SOURCE:-}"
 CODEX_SESSIONS_BASE_PATH="${CODEX_SESSIONS_BASE_PATH:-}"
 UVICORN_LOG_LEVEL="${UVICORN_LOG_LEVEL:-info}"
 UVICORN_RELOAD="${UVICORN_RELOAD:-0}"
+MONITORING_ENABLED="${MONITORING_ENABLED:-}"
+MONITORING_HISTORY_SIZE="${MONITORING_HISTORY_SIZE:-}"
+MONITORING_STREAM_ENABLED="${MONITORING_STREAM_ENABLED:-}"
+MONITORING_REFRESH_INTERVAL_MS="${MONITORING_REFRESH_INTERVAL_MS:-}"
 
 export CODEX_BIN
 export APP_CONFIG_FILE
@@ -40,6 +44,18 @@ if [ -n "$CODEX_PROJECT_SOURCE" ]; then
 fi
 if [ -n "$CODEX_SESSIONS_BASE_PATH" ]; then
     export CODEX_SESSIONS_BASE_PATH
+fi
+if [ -n "$MONITORING_ENABLED" ]; then
+    export MONITORING_ENABLED
+fi
+if [ -n "$MONITORING_HISTORY_SIZE" ]; then
+    export MONITORING_HISTORY_SIZE
+fi
+if [ -n "$MONITORING_STREAM_ENABLED" ]; then
+    export MONITORING_STREAM_ENABLED
+fi
+if [ -n "$MONITORING_REFRESH_INTERVAL_MS" ]; then
+    export MONITORING_REFRESH_INTERVAL_MS
 fi
 
 if ! command -v uvicorn >/dev/null 2>&1; then
@@ -72,6 +88,15 @@ if [ -n "$CODEX_PROJECT_SOURCE" ]; then
 fi
 if [ -n "$CODEX_SESSIONS_BASE_PATH" ]; then
     echo "Codex sessions base path: $CODEX_SESSIONS_BASE_PATH"
+fi
+if [ -n "$MONITORING_ENABLED" ]; then
+    echo "Monitoring enabled override: $MONITORING_ENABLED"
+fi
+if [ -n "$MONITORING_HISTORY_SIZE" ]; then
+    echo "Monitoring history size override: $MONITORING_HISTORY_SIZE"
+fi
+if [ -n "$MONITORING_STREAM_ENABLED" ]; then
+    echo "Monitoring stream enabled override: $MONITORING_STREAM_ENABLED"
 fi
 echo "Reload mode: $UVICORN_RELOAD"
 

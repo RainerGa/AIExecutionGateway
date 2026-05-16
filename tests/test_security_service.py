@@ -28,16 +28,16 @@ def test_trusted_header_resolves_identity_and_roles():
         user_groups=["Users"],
     )
     service = AuthenticationService(settings=settings)
-    
+
     headers = {
         "X-Authenticated-User": "alice",
         "X-Authenticated-Groups": "Admins;Developers",
         "X-Authenticated-Roles": "custom-role",
     }
     request = _build_request(headers)
-    
+
     principal = service.resolve_principal(request)
-    
+
     assert principal is not None
     assert principal.subject == "alice"
     assert principal.username == "alice"
@@ -53,10 +53,10 @@ def test_trusted_header_rejects_untrusted_proxy():
         trusted_proxy_ips=["10.0.0.1"],
     )
     service = AuthenticationService(settings=settings)
-    
+
     headers = {"X-Authenticated-User": "alice"}
     request = _build_request(headers, host="192.168.1.1")
-    
+
     with pytest.raises(AuthenticationFailedError) as exc_info:
         service.resolve_principal(request)
     assert "untrusted source" in exc_info.value.message
@@ -65,16 +65,16 @@ def test_trusted_header_rejects_untrusted_proxy():
 def test_oidc_claim_normalization_handles_lists_and_strings():
     """Service should correctly handle both list and string claims from JWT."""
     service = AuthenticationService(settings=build_test_settings())
-    
+
     # Internal method test via direct access (mocking JWT decoding results)
     claims = {
         "groups": ["group1", "group2"],
         "roles": "role1",
     }
-    
+
     groups = service._claim_values(claims.get("groups"))
     roles = service._claim_values(claims.get("roles"))
-    
+
     assert groups == ("group1", "group2")
     assert roles == ("role1",)
 
@@ -87,7 +87,7 @@ def test_auth_service_denies_access_without_required_role():
         execute_task_roles=["admin"],
     )
     service = AuthenticationService(settings=settings)
-    
+
     # Alice has only 'user' role
     headers = {
         "X-Authenticated-User": "alice",
@@ -95,8 +95,9 @@ def test_auth_service_denies_access_without_required_role():
     }
     request = _build_request(headers)
     principal = service.resolve_principal(request)
-    
+
     from app.core.exceptions import AuthorizationDeniedError
+
     with pytest.raises(AuthorizationDeniedError):
         service.require_execute_task_access(principal)
 
@@ -173,9 +174,12 @@ def test_authenticate_via_oidc_jwt_missing_subject():
     settings = build_test_settings(auth_mode="oidc_jwt")
     service = AuthenticationService(settings=settings)
     request = _build_request({"Authorization": "Bearer token123"})
-    
+
     with patch.object(service, "_decode_oidc_token", return_value={"sub": ""}):
-        with pytest.raises(AuthenticationFailedError, match="does not contain the configured subject claim"):
+        with pytest.raises(
+            AuthenticationFailedError,
+            match="does not contain the configured subject claim",
+        ):
             service._authenticate_via_oidc_jwt(request)
 
 
@@ -183,7 +187,7 @@ def test_decode_oidc_token_missing_settings():
     settings = build_test_settings(auth_mode="oidc_jwt")
     object.__setattr__(settings.auth.oidc, "issuer", "")
     service = AuthenticationService(settings=settings)
-    
+
     with patch.object(service, "_oidc_dependency_status", return_value=[]):
         with pytest.raises(ConfigurationError, match="misconfigured"):
             service._decode_oidc_token("token123")
@@ -192,22 +196,25 @@ def test_decode_oidc_token_missing_settings():
 def test_decode_oidc_token_no_audience_and_configuration_error():
     settings = build_test_settings(auth_mode="oidc_jwt", oidc_audience=None)
     service = AuthenticationService(settings=settings)
-    
-    with patch.object(service, "_oidc_dependency_status", return_value=[]), \
-         patch("app.security.authentication._build_jwk_client") as mock_jwk, \
-         patch("app.security.authentication.importlib.import_module") as mock_import:
-        
+
+    with (
+        patch.object(service, "_oidc_dependency_status", return_value=[]),
+        patch("app.security.authentication._build_jwk_client") as mock_jwk,
+        patch("app.security.authentication.importlib.import_module") as mock_import,
+    ):
         # Test 1: ConfigurationError passthrough
-        mock_jwk.return_value.get_signing_key_from_jwt.side_effect = ConfigurationError("test")
+        mock_jwk.return_value.get_signing_key_from_jwt.side_effect = ConfigurationError(
+            "test"
+        )
         with pytest.raises(ConfigurationError, match="test"):
             service._decode_oidc_token("token123")
-            
+
         # Test 2: no audience sets verify_aud=False
         mock_key = MagicMock()
         mock_key.key = "key"
         mock_jwk.return_value.get_signing_key_from_jwt.side_effect = None
         mock_jwk.return_value.get_signing_key_from_jwt.return_value = mock_key
-        
+
         mock_jwt = MagicMock()
         mock_import.return_value = mock_jwt
         service._decode_oidc_token("token123")
@@ -222,7 +229,9 @@ def test_extract_bearer_token_empty():
     assert service._extract_bearer_token(None) is None
     with pytest.raises(AuthenticationFailedError, match="use the Bearer scheme"):
         service._extract_bearer_token("Basic 123")
-    with pytest.raises(AuthenticationFailedError, match="does not contain a bearer token"):
+    with pytest.raises(
+        AuthenticationFailedError, match="does not contain a bearer token"
+    ):
         service._extract_bearer_token("Bearer   ")
 
 

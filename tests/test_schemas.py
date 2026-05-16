@@ -44,10 +44,7 @@ def test_task_request_enforces_max_length():
 
 def test_task_request_accepts_valid_session_id():
     """Request should allow a valid session identifier."""
-    request = TaskExecutionRequest(
-        task_description="task", 
-        session_id="session-42"
-    )
+    request = TaskExecutionRequest(task_description="task", session_id="session-42")
     assert request.session_id == "session-42"
 
 
@@ -55,19 +52,26 @@ def test_task_request_accepts_valid_session_id():
 # session_id whitelist-validator security tests
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("invalid_id,description", [
-    ("../etc",           "path traversal with leading dots"),
-    ("alice/../bob",     "embedded path traversal"),
-    ("..",               "bare parent directory reference"),
-    ("alice/bob",        "forward slash"),
-    ("/absolute",        "leading slash"),
-    ("alice evil",       "space character"),
-    ("alice;evil",       "semicolon"),
-    ("alice\x00evil",    "null byte injection"),
-    ("alice%2Fevil",     "URL-encoded slash (not decoded, but still rejected by regex)"),
-    ("",                 "empty string (min_length=1)"),
-    ("a" * 129,          "exceeds max length of 128"),
-])
+
+@pytest.mark.parametrize(
+    "invalid_id,description",
+    [
+        ("../etc", "path traversal with leading dots"),
+        ("alice/../bob", "embedded path traversal"),
+        ("..", "bare parent directory reference"),
+        ("alice/bob", "forward slash"),
+        ("/absolute", "leading slash"),
+        ("alice evil", "space character"),
+        ("alice;evil", "semicolon"),
+        ("alice\x00evil", "null byte injection"),
+        (
+            "alice%2Fevil",
+            "URL-encoded slash (not decoded, but still rejected by regex)",
+        ),
+        ("", "empty string (min_length=1)"),
+        ("a" * 129, "exceeds max length of 128"),
+    ],
+)
 def test_session_id_rejects_unsafe_characters(invalid_id: str, description: str):
     """
     SECURITY: The session_id validator must reject all values that could
@@ -77,14 +81,17 @@ def test_session_id_rejects_unsafe_characters(invalid_id: str, description: str)
         TaskExecutionRequest(task_description="task", session_id=invalid_id)
 
 
-@pytest.mark.parametrize("valid_id", [
-    "alice",
-    "session-123",
-    "user_workdir",
-    "MySession-42",
-    "UPPER-lower_mix-42",
-    "a" * 128,
-])
+@pytest.mark.parametrize(
+    "valid_id",
+    [
+        "alice",
+        "session-123",
+        "user_workdir",
+        "MySession-42",
+        "UPPER-lower_mix-42",
+        "a" * 128,
+    ],
+)
 def test_session_id_accepts_safe_characters(valid_id: str):
     """
     The session_id validator must accept all values consisting solely of

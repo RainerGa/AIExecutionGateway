@@ -1,0 +1,14 @@
+[tool.ruff]
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E9", "F"]
+
+[tool.mypy]
+python_version = "3.14"
+files = ["app", "monitor_live.py"]
+ignore_missing_imports = true
+warn_unused_configs = true
+show_error_codes = true
+pretty = true
+explicit_package_bases = true

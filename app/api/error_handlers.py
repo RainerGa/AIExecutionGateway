@@ -73,6 +73,6 @@ async def handle_unexpected_error(
 
 def register_exception_handlers(app: FastAPI) -> None:
     """Attach all shared exception handlers to the FastAPI application."""
-    app.add_exception_handler(ApplicationError, handle_application_error)
-    app.add_exception_handler(RequestValidationError, handle_validation_error)
+    app.add_exception_handler(ApplicationError, handle_application_error)  # type: ignore[arg-type]
+    app.add_exception_handler(RequestValidationError, handle_validation_error)  # type: ignore[arg-type]
     app.add_exception_handler(Exception, handle_unexpected_error)

@@ -5,7 +5,11 @@ from __future__ import annotations
 import asyncio
 
 from app.api.v1.endpoints.codex import execute_task
-from app.schemas.codex import TaskExecutionMetadata, TaskExecutionRequest, TaskExecutionResponse
+from app.schemas.codex import (
+    TaskExecutionMetadata,
+    TaskExecutionRequest,
+    TaskExecutionResponse,
+)
 from tests.support import build_test_principal
 
 

@@ -4,7 +4,7 @@
 
 [![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=flat&logo=fastapi)](https://fastapi.tiangolo.com/)
 [![Python](https://img.shields.io/badge/Python-3.10+-3776AB?style=flat&logo=python&logoColor=white)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/Tests-107%20passed-brightgreen)](#-testing)
+[![Tests](https://img.shields.io/badge/Tests-Expanded%20unit%20coverage-brightgreen)](#-testing)
 [![Status](https://img.shields.io/badge/Status-Phase%201%20(Enterprise%20Ready)-green)](#-enterprise-status)
 
 A versioned REST API based on FastAPI for professional orchestration of OpenAI Codex tasks in enterprise environments.
@@ -23,7 +23,7 @@ This API serves as an **Enterprise Bridge**. It encapsulates the Codex SDK withi
 - **RBAC**: Role-based access control — who is allowed to execute tasks?
 - **Workspace Isolation**: Each user session receives its own isolated filesystem workspace, optionally provisioned from a project template.
 - **Security-hardened**: Defense-in-depth validation on all user inputs (path traversal prevention, whitelist validation).
-- **Observability**: Request-correlated logging, standardized error formats and health probes.
+- **Observability**: Request-correlated logging, health probes, and integrated live monitoring for administrators.
 
 ---
 
@@ -96,6 +96,10 @@ All settings can be overridden via environment variables — useful for Docker/C
 | `CODEX_MODEL` | *(Codex default)* | Override the model used for task execution |
 | `CODEX_PROJECT_SOURCE` | *(none)* | Template directory copied into new session workspaces |
 | `CODEX_SESSIONS_BASE_PATH` | *(none)* | Root directory for per-session workspace isolation |
+| `MONITORING_ENABLED` | `true` | Enables integrated live monitoring |
+| `MONITORING_HISTORY_SIZE` | `100` | Number of recently completed tasks kept in memory |
+| `MONITORING_STREAM_ENABLED` | `true` | Enables the server-sent event stream for live updates |
+| `MONITORING_REFRESH_INTERVAL_MS` | `1000` | Suggested refresh interval for terminal clients |
 | `UVICORN_LOG_LEVEL` | `info` | Uvicorn log verbosity (`debug`, `info`, `warning`, …) |
 | `UVICORN_RELOAD` | `0` | Set to `1` to enable hot-reload (development only) |
 
@@ -223,12 +227,77 @@ docker build -t codex-api -f docker/Dockerfile .
 }
 ```
 
-### Health & Monitoring
+### Operational and Monitoring Endpoints
 
 | Endpoint | Description |
 |---|---|
 | `GET /api/v1/health/live` | Liveness probe — is the process running? |
 | `GET /api/v1/health/ready` | Readiness probe — are Codex and auth dependencies available? |
+| `GET /api/v1/monitoring/snapshot` | Current live snapshot for administrators |
+| `GET /api/v1/monitoring/events` | SSE stream with live runtime events for administrators |
+
+### Live Monitoring for Administrators
+
+The monitoring subsystem tracks active tasks, sessions, workspaces, and recently completed operations directly inside the API process. In production auth modes, the monitoring endpoints are restricted to users with the `admin` role.
+
+**Read a snapshot locally (`auth.mode=disabled`):**
+
+```bash
+curl http://localhost:8000/api/v1/monitoring/snapshot
+```
+
+**Read a snapshot behind trusted headers / SSO:**
+
+```bash
+curl http://localhost:8000/api/v1/monitoring/snapshot \
+  -H "X-Authenticated-User: alice" \
+  -H "X-Authenticated-Roles: admin"
+```
+
+**Example snapshot:**
+
+```json
+{
+  "status": "up",
+  "active_task_count": 1,
+  "session_count": 2,
+  "history_size": 100,
+  "active_tasks": [
+    {
+      "request_id": "req-123",
+      "session_id": "alice-project-42",
+      "username": "alice",
+      "status": "running",
+      "task_preview": "Analyze the project and create an action plan",
+      "model": "gpt-5.4",
+      "workspace_path": "/srv/codex/sessions/alice-project-42",
+      "workspace_state": "reused"
+    }
+  ],
+  "recent_events": [
+    {
+      "event_id": 41,
+      "event_type": "task_started",
+      "message": "Task started for session alice-project-42"
+    }
+  ]
+}
+```
+
+**Read live events via SSE:**
+
+```bash
+curl -N http://localhost:8000/api/v1/monitoring/events \
+  -H "X-Authenticated-User: alice" \
+  -H "X-Authenticated-Roles: admin"
+```
+
+**Launch the terminal TUI:**
+
+```bash
+python monitor_live.py --base-url http://127.0.0.1:8000/api/v1
+python monitor_live.py --base-url http://127.0.0.1:8000/api/v1 --user alice --errors-only
+```
 
 ---
 
@@ -273,10 +342,12 @@ All errors follow a consistent JSON structure:
 
 ```json
 {
-  "error_code": "invalid_task_request",
-  "message": "Codex rejected the submitted task request.",
-  "details": "...",
-  "request_id": "c5f3e239-..."
+  "error": {
+    "code": "invalid_task_request",
+    "message": "Codex rejected the submitted task request.",
+    "details": "...",
+    "request_id": "c5f3e239-..."
+  }
 }
 ```
 
@@ -308,16 +379,31 @@ pytest --cov=app --cov-report=term-missing
 pytest tests/test_workspaces.py tests/test_security_deep.py -v
 ```
 
-**Current status: 107 tests, all passing.**
+The test suite now covers configuration, security, monitoring, workspace isolation, endpoint contracts, and terminal helpers in a targeted way.
 
 | Test Module | Focus |
 |---|---|
+| `test_monitoring_service.py` | Live runtime state, event history, failure handling, session views |
+| `test_monitoring_api.py` | Admin endpoints, SSE streaming, monitoring endpoint helpers |
+| `test_monitor_live.py` | Header building, filters, SSE parsing, stream error handling |
+| `test_dependencies.py` + `test_app_factory.py` | Dependency wiring, app state, published routes |
 | `test_codex_service.py` | Service logic, workspace provisioning, error mapping |
 | `test_auth.py` + `test_security_service.py` | Authentication modes, RBAC, role resolution |
 | `test_security_deep.py` | Adversarial: proxy injection, malformed tokens, claim injection |
 | `test_workspaces.py` | Session isolation, path traversal prevention, symlink handling |
 | `test_schemas.py` | Input validation, `session_id` whitelist, edge cases |
-| `test_integration.py` | End-to-end request flow, request-id propagation |
+| `test_config.py` | Profile resolution, env overrides, monitoring clamps |
+| `test_integration.py` | Near end-to-end flows where the local toolchain remains stable |
+
+Additional useful commands:
+
+```bash
+# Fast monitoring-focused verification
+pytest tests/test_monitoring_service.py tests/test_monitoring_api.py tests/test_monitor_live.py tests/test_dependencies.py -v
+
+# Configuration, security, and service-layer verification
+pytest tests/test_config.py tests/test_auth.py tests/test_security_service.py tests/test_codex_service.py -v
+```
 
 ---
 
@@ -340,7 +426,7 @@ If you discover a security vulnerability, please open a **private GitHub issue**
 
 This project is licensed under the [MIT License](LICENSE). Contributions are welcome!
 
-Please create an **issue** to discuss your idea before opening a pull request. For development setup and architectural details, see the **[Developer Guide](docs/DEVELOPER_GUIDE.en.md)** and **[File Reference](docs/FILE_REFERENCE.en.md)**.
+Please create an **issue** to discuss your idea before opening a pull request. For development setup and architectural details, see the **[Developer Guide](docs/DEVELOPER_GUIDE.md)** and **[File Reference](docs/FILE_REFERENCE.md)**.
 
 ---
 
@@ -353,4 +439,4 @@ The application has a solid, security-hardened technical foundation. The followi
 - [ ] Rate limiting & job queuing
 - [ ] Metrics & tracing (Prometheus/Jaeger)
 
-For architecture details and extension points, see the **[Developer Guide](docs/DEVELOPER_GUIDE.en.md)**.
+For architecture details and extension points, see the **[Developer Guide](docs/DEVELOPER_GUIDE.md)**.

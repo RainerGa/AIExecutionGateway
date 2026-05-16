@@ -4,7 +4,7 @@
 
 [![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=flat&logo=fastapi)](https://fastapi.tiangolo.com/)
 [![Python](https://img.shields.io/badge/Python-3.10+-3776AB?style=flat&logo=python&logoColor=white)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/Tests-107%20passed-brightgreen)](#-testing)
+[![Tests](https://img.shields.io/badge/Tests-Expanded%20unit%20coverage-brightgreen)](#-testing)
 [![Status](https://img.shields.io/badge/Status-Phase%201%20(Enterprise%20Ready)-green)](#-enterprise-status)
 
 Eine versionierte REST-API auf Basis von FastAPI für die professionelle Orchestrierung von OpenAI-Codex-Aufgaben in Enterprise-Umgebungen.
@@ -23,7 +23,7 @@ Diese API dient als **Enterprise-Bridge**. Sie kapselt das Codex-SDK in einem wa
 - **RBAC**: Rollenbasierte Zugriffskontrolle – wer darf Tasks ausführen?
 - **Workspace-Isolierung**: Jede Benutzersession erhält ein eigenes, isoliertes Dateisystem-Verzeichnis, optional aus einem Projekt-Template provisioniert.
 - **Sicherheitsgehärtet**: Defense-in-Depth-Validierung aller Benutzereingaben (Path-Traversal-Prävention, Whitelist-Validierung).
-- **Observability**: Request-korreliertes Logging, standardisierte Fehlerformate und Health-Probes.
+- **Observability**: Request-korreliertes Logging, Health-Probes und ein integriertes Live-Monitoring für Administratoren.
 
 ---
 
@@ -96,6 +96,10 @@ Alle Einstellungen können über Umgebungsvariablen überschrieben werden – be
 | `CODEX_MODEL` | *(Codex-Standard)* | Modell für die Task-Ausführung überschreiben |
 | `CODEX_PROJECT_SOURCE` | *(keiner)* | Template-Verzeichnis für neue Session-Workspaces |
 | `CODEX_SESSIONS_BASE_PATH` | *(keiner)* | Root-Verzeichnis für Session-Workspace-Isolierung |
+| `MONITORING_ENABLED` | `true` | Aktiviert das integrierte Live-Monitoring |
+| `MONITORING_HISTORY_SIZE` | `100` | Anzahl zuletzt abgeschlossener Tasks im In-Memory-Verlauf |
+| `MONITORING_STREAM_ENABLED` | `true` | Aktiviert den Server-Sent-Event-Stream für Live-Updates |
+| `MONITORING_REFRESH_INTERVAL_MS` | `1000` | Empfohlenes Aktualisierungsintervall für Terminal-Clients |
 | `UVICORN_LOG_LEVEL` | `info` | Uvicorn-Log-Verbosität (`debug`, `info`, `warning`, …) |
 | `UVICORN_RELOAD` | `0` | Auf `1` setzen für Hot-Reload (nur Entwicklung) |
 
@@ -223,12 +227,77 @@ docker build -t codex-api -f docker/Dockerfile .
 }
 ```
 
-### Health & Monitoring
+### Betriebs- und Monitoring-Endpunkte
 
 | Endpunkt | Beschreibung |
 |---|---|
 | `GET /api/v1/health/live` | Liveness Probe – lebt der Prozess? |
 | `GET /api/v1/health/ready` | Readiness Probe – sind Codex und Auth-Abhängigkeiten bereit? |
+| `GET /api/v1/monitoring/snapshot` | Aktueller Live-Snapshot für Administratoren |
+| `GET /api/v1/monitoring/events` | SSE-Stream mit Live-Ereignissen für Administratoren |
+
+### Live-Monitoring für Administratoren
+
+Das Monitoring verfolgt aktive Tasks, Sessions, Workspaces und kürzlich abgeschlossene Vorgänge direkt im API-Prozess. In produktiven Auth-Modi sind die Monitoring-Endpunkte nur für Benutzer mit Rolle `admin` freigegeben.
+
+**Snapshot lokal abrufen (`auth.mode=disabled`):**
+
+```bash
+curl http://localhost:8000/api/v1/monitoring/snapshot
+```
+
+**Snapshot hinter Trusted Header / SSO abrufen:**
+
+```bash
+curl http://localhost:8000/api/v1/monitoring/snapshot \
+  -H "X-Authenticated-User: alice" \
+  -H "X-Authenticated-Roles: admin"
+```
+
+**Beispiel-Snapshot:**
+
+```json
+{
+  "status": "up",
+  "active_task_count": 1,
+  "session_count": 2,
+  "history_size": 100,
+  "active_tasks": [
+    {
+      "request_id": "req-123",
+      "session_id": "alice-projekt-42",
+      "username": "alice",
+      "status": "running",
+      "task_preview": "Analysiere das Projekt und erstelle einen Maßnahmenplan",
+      "model": "gpt-5.4",
+      "workspace_path": "/srv/codex/sessions/alice-projekt-42",
+      "workspace_state": "reused"
+    }
+  ],
+  "recent_events": [
+    {
+      "event_id": 41,
+      "event_type": "task_started",
+      "message": "Task started for session alice-projekt-42"
+    }
+  ]
+}
+```
+
+**Live-Ereignisse als SSE-Stream lesen:**
+
+```bash
+curl -N http://localhost:8000/api/v1/monitoring/events \
+  -H "X-Authenticated-User: alice" \
+  -H "X-Authenticated-Roles: admin"
+```
+
+**Terminal-TUI starten:**
+
+```bash
+python monitor_live.py --base-url http://127.0.0.1:8000/api/v1
+python monitor_live.py --base-url http://127.0.0.1:8000/api/v1 --user alice --errors-only
+```
 
 ---
 
@@ -273,10 +342,12 @@ Alle Fehlerantworten folgen einem einheitlichen JSON-Format:
 
 ```json
 {
-  "error_code": "invalid_task_request",
-  "message": "Codex hat den Task abgelehnt.",
-  "details": "...",
-  "request_id": "c5f3e239-..."
+  "error": {
+    "code": "invalid_task_request",
+    "message": "Codex hat den Task abgelehnt.",
+    "details": "...",
+    "request_id": "c5f3e239-..."
+  }
 }
 ```
 
@@ -308,16 +379,31 @@ pytest --cov=app --cov-report=term-missing
 pytest tests/test_workspaces.py tests/test_security_deep.py -v
 ```
 
-**Aktueller Stand: 107 Tests, alle bestanden.**
+Die Testsuite deckt Konfiguration, Security, Monitoring, Workspace-Isolierung, Endpoint-Verträge und Terminal-Helfer gezielt ab.
 
 | Testmodul | Schwerpunkt |
 |---|---|
+| `test_monitoring_service.py` | Live-State, Event-Historie, Fehlerfälle, Session-Sicht |
+| `test_monitoring_api.py` | Admin-Endpunkte, SSE-Stream, Monitoring-Helpers |
+| `test_monitor_live.py` | Header-Building, Filter, SSE-Parsing, Stream-Fehler |
+| `test_dependencies.py` + `test_app_factory.py` | Dependency-Wiring, App-State, veröffentlichte Routen |
 | `test_codex_service.py` | Service-Logik, Workspace-Provisionierung, Fehler-Mapping |
 | `test_auth.py` + `test_security_service.py` | Auth-Modi, RBAC, Rollen-Auflösung |
 | `test_security_deep.py` | Adversarial: Proxy-Injection, fehlerhafte Tokens, Claim-Injection |
 | `test_workspaces.py` | Session-Isolierung, Path-Traversal-Prävention, Symlink-Behandlung |
 | `test_schemas.py` | Eingabe-Validierung, `session_id`-Whitelist, Randfälle |
-| `test_integration.py` | End-to-End Request-Flow, Request-ID-Propagation |
+| `test_config.py` | Profilauflösung, Env-Overrides, Monitoring-Grenzwerte |
+| `test_integration.py` | End-to-End-nahe Flows dort, wo die lokale Toolchain es stabil zulässt |
+
+Zusätzliche nützliche Kommandos:
+
+```bash
+# Schneller Monitoring-Fokus
+pytest tests/test_monitoring_service.py tests/test_monitoring_api.py tests/test_monitor_live.py tests/test_dependencies.py -v
+
+# Konfiguration, Security und Service-Layer
+pytest tests/test_config.py tests/test_auth.py tests/test_security_service.py tests/test_codex_service.py -v
+```
 
 ---
 
@@ -340,7 +426,7 @@ Falls eine Sicherheitslücke entdeckt wird, bitte ein **privates GitHub-Issue** 
 
 Dieses Projekt ist unter der [MIT Lizenz](LICENSE) lizenziert. Beiträge sind willkommen!
 
-Bitte zunächst ein **Issue erstellen**, um die geplante Änderung zu diskutieren, bevor ein Pull Request geöffnet wird. Details zur Entwicklungsumgebung und Architektur finden sich im **[Developer Guide](docs/DEVELOPER_GUIDE.md)** und in der **[Dateireferenz](docs/FILE_REFERENCE.md)**.
+Bitte zunächst ein **Issue erstellen**, um die geplante Änderung zu diskutieren, bevor ein Pull Request geöffnet wird. Details zur Entwicklungsumgebung und Architektur finden sich im **[Developer Guide](docs/DEVELOPER_GUIDE.de.md)** und in der **[Dateireferenz](docs/FILE_REFERENCE.de.md)**.
 
 ---
 
@@ -353,4 +439,4 @@ Die Anwendung besitzt eine solide, sicherheitsgehärtete technische Basis. Für 
 - [ ] Rate Limiting & Job-Queuing
 - [ ] Metriken & Tracing (Prometheus/Jaeger)
 
-Details dazu im **[Developer Guide](docs/DEVELOPER_GUIDE.md)**.
+Details dazu im **[Developer Guide](docs/DEVELOPER_GUIDE.de.md)**.

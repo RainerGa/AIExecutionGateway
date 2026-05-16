@@ -50,9 +50,16 @@ async def read_readiness(
         component
         if isinstance(component, HealthComponent)
         else HealthComponent.model_validate(component)
-        for component in [*auth_service.readiness_components(), *service.readiness_components()]
+        for component in [
+            *auth_service.readiness_components(),
+            *service.readiness_components(),
+        ]
     ]
-    status = "up" if all(component.status == "up" for component in components) else "degraded"
+    status = (
+        "up"
+        if all(component.status == "up" for component in components)
+        else "degraded"
+    )
     return HealthResponse(
         status=status,
         service=settings.app_name,

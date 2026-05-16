@@ -1,8 +1,0 @@
-fastapi>=0.136.0,<0.137.0
-uvicorn>=0.46.0,<0.47.0
-pydantic>=2.13.0,<3.0.0
-pytest>=9.0.0,<10.0.0
-PyJWT>=2.10.0,<3.0.0
-cryptography>=44.0.0,<46.0.0
-tomli>=2.0.0,<3.0.0; python_version < "3.11"
-openai-codex-app-server-sdk @ git+https://github.com/openai/codex-app-server-sdk.git
